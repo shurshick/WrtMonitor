@@ -1,23 +1,15 @@
 # TrueNAS Custom App
 
-Для тестовой установки используйте готовый YAML:
+Подробная инструкция по серверной части находится здесь:
 
-- [`deploy/truenas/wrtmonitor-truenas.yaml`](../deploy/truenas/wrtmonitor-truenas.yaml)
+- [Развёртывание серверной части](server-deployment.md)
 
-Внутри два сервиса:
+Коротко:
 
-- `postgres`;
-- `wrtmonitor`.
+1. Скачайте `wrtmonitor-truenas-0.1.0-test.3.yaml` из релиза.
+2. Создайте TrueNAS Custom App из YAML.
+3. Задайте `WRTMONITOR_PUBLIC_SERVER_URL`, `WRTMONITOR_JWT_SECRET`, `POSTGRES_PASSWORD`.
+4. Для локального HTTP-теста включите `WRTMONITOR_ALLOW_INSECURE_LOCAL=true`.
+5. Откройте `/setup` и создайте первого администратора.
 
-Минимальные переменные для TrueNAS:
-
-```text
-WRTMONITOR_PUBLIC_SERVER_URL=https://monitor.example.ru
-WRTMONITOR_HTTP_PORT=8088
-WRTMONITOR_JWT_SECRET=long-random-secret
-POSTGRES_DB=wrtmonitor
-POSTGRES_USER=wrtmonitor
-POSTGRES_PASSWORD=password
-```
-
-После первого запуска откройте `/setup` и создайте администратора. Если TrueNAS публикует приложение через reverse proxy, в `WRTMONITOR_PUBLIC_SERVER_URL` указывайте внешний адрес, доступный Android-приложению и OpenWrt-роутерам.
+Если TrueNAS публикует приложение через reverse proxy, в `WRTMONITOR_PUBLIC_SERVER_URL` указывайте внешний HTTPS-адрес, доступный Android-приложению и OpenWrt-роутерам.

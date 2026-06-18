@@ -14,26 +14,27 @@
 - Docker Compose: запуск на Docker-сервере, VPS, домашнем Linux-сервере, NAS с Docker.
 - TrueNAS Custom App: отдельный сценарий развёртывания через Docker.
 
-## Первый запуск
+## Развёртывание сервера
 
-```sh
-cp .env.example .env
-docker compose up --build
-```
+Подробная инструкция:
 
-После запуска откройте:
+- [Развёртывание серверной части](docs/server-deployment.md)
 
-```text
-http://server-ip:8088/setup
-```
+Короткий порядок:
+
+1. Запустите сервер и PostgreSQL через Docker Compose или TrueNAS Custom App.
+2. Откройте `/setup`.
+3. Создайте первого администратора.
+4. Проверьте `/health`.
+5. Подключите Android-приложение и OpenWrt agent.
 
 При первой настройке задаются:
 
-- внешний HTTPS-адрес сервера;
-- администратор;
+- публичный адрес сервера;
+- имя администратора;
 - пароль администратора.
 
-Внешний адрес сервера должен быть доступен Android-приложению и OpenWrt-роутеру.
+Публичный адрес должен быть доступен Android-приложению и OpenWrt-роутеру.
 
 Для локальной лабораторной установки можно временно включить HTTP:
 
@@ -102,6 +103,7 @@ OpenWrt agent выполняет только команды из allowlist:
 
 ## Документация
 
+- [Развёртывание серверной части](docs/server-deployment.md)
 - [Архитектура](docs/architecture.md)
 - [OpenWrt agent](docs/openwrt-agent.md)
 - [Android-приложение](docs/android.md)
