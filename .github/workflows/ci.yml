@@ -29,6 +29,7 @@ jobs:
       - run: pip install -r backend/requirements.txt
       - run: pytest backend/tests
         env:
+          PYTHONPATH: ${{ github.workspace }}
           WRTMONITOR_DATABASE_URL: postgresql+psycopg://wrtmonitor:change-me-db-password@localhost:5432/wrtmonitor_test
           WRTMONITOR_ALLOW_INSECURE_LOCAL: "true"
 
@@ -49,4 +50,5 @@ jobs:
       - uses: android-actions/setup-android@v3
       - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x ./gradlew
       - run: ./gradlew :android:app:assembleDebug
