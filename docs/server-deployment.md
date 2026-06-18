@@ -97,19 +97,25 @@ PostgreSQL container
    ghcr.io/shurshick/wrtmonitor:0.1.0-test.3
    ```
 
-4. В TrueNAS создайте Custom App из YAML.
+4. Перед вставкой YAML в TrueNAS замените тестовые значения.
 
-5. Задайте переменные. Для NPM/HTTPS:
+   TrueNAS проверяет compose-файл до запуска, поэтому файл не должен зависеть от незаданных `${...}` переменных.
 
-   ```env
-   WRTMONITOR_PUBLIC_SERVER_URL=https://monitor.example.ru
-   WRTMONITOR_HTTP_PORT=8088
-   WRTMONITOR_JWT_SECRET=replace-with-long-random-secret
-   POSTGRES_PASSWORD=replace-with-db-password
-   POSTGRES_DB=wrtmonitor
-   POSTGRES_USER=wrtmonitor
-   WRTMONITOR_ALLOW_INSECURE_LOCAL=false
+   Пароль базы должен совпадать в двух местах:
+
+   ```yaml
+   POSTGRES_PASSWORD: change-me-postgres-password
+   WRTMONITOR_DATABASE_URL: postgresql+psycopg://wrtmonitor:change-me-postgres-password@postgres:5432/wrtmonitor
    ```
+
+   Также замените внешний HTTPS-адрес и JWT-секрет:
+
+   ```yaml
+   WRTMONITOR_PUBLIC_SERVER_URL: https://monitor.example.ru
+   WRTMONITOR_JWT_SECRET: change-me-long-random-jwt-secret
+   ```
+
+5. В TrueNAS создайте Custom App из подготовленного YAML.
 
 6. Запустите приложение.
 
