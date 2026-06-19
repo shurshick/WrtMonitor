@@ -11,8 +11,17 @@ android {
         applicationId = "ru.wrtmonitor.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-test.11"
+        versionCode = 12
+        versionName = "0.1.0-test.12"
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("android/debug.keystore")
+            storePassword = "wrtmonitor"
+            keyAlias = "wrtmonitor-debug"
+            keyPassword = "wrtmonitor"
+        }
     }
 
     buildFeatures {

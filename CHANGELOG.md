@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.0-test.12
+
+- Добавлена adaptive launcher icon для Android-приложения.
+- Android `versionCode` повышен до `12`.
+- Android `versionName` обновлён до `0.1.0-test.12`.
+- Debug APK теперь подписывается стабильным тестовым ключом из репозитория.
+- Исправлена причина, из-за которой тестовые APK приходилось удалять перед установкой новой версии.
+
 ## v0.1.0-test.11
 
 - Стабилизирован OpenWrt agent для BusyBox `ash`.

@@ -59,13 +59,13 @@ WRTMONITOR_PUBLIC_SERVER_URL=http://server-ip:8088
 В релизе файл называется:
 
 ```text
-wrtmonitor-truenas-v0.1.0-test.11.yaml
+wrtmonitor-truenas-v0.1.0-test.12.yaml
 ```
 
 Образ тестовой версии:
 
 ```text
-ghcr.io/shurshick/wrtmonitor:0.1.0-test.11
+ghcr.io/shurshick/wrtmonitor:0.1.0-test.12
 ```
 
 ## Подключение клиентов
@@ -94,7 +94,7 @@ OpenWrt agent выполняет только команды из allowlist:
 
 ## Статус
 
-Текущая тестовая версия `v0.1.0-test.11` содержит:
+Текущая тестовая версия `v0.1.0-test.12` содержит:
 
 - backend API;
 - PostgreSQL и Alembic-миграции;
@@ -109,6 +109,8 @@ OpenWrt agent выполняет только команды из allowlist:
 - CI с backend E2E, agent smoke tests, `sh -n`, shellcheck, Docker и Android build;
 - TrueNAS YAML;
 - Android debug APK в релизах.
+- adaptive icon для Android;
+- стабильную debug-подпись и повышенный `versionCode` для обновления APK поверх установленной версии.
 
 Следующие крупные блоки:
 

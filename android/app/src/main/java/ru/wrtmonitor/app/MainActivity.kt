@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Wifi
@@ -133,7 +133,7 @@ private fun WrtMonitorApp() {
                     navigationIcon = {
                         if (selectedDevice != null) {
                             IconButton(onClick = { selectedDevice = null }) {
-                                Icon(Icons.Default.ArrowBack, null)
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
                             }
                         }
                     }
