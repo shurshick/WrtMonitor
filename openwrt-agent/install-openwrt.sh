@@ -115,15 +115,14 @@ chmod 0755 /usr/bin/wrtmonitor-agent
 cp wrtmonitor.init /etc/init.d/wrtmonitor
 chmod 0755 /etc/init.d/wrtmonitor
 
-uci -q batch <<EOF
-set wrtmonitor.main=wrtmonitor
-set wrtmonitor.main.enabled='1'
-set wrtmonitor.main.server_url='$SERVER_URL'
-set wrtmonitor.main.device_token='$DEVICE_TOKEN'
-set wrtmonitor.main.device_id='$DEVICE_ID'
-set wrtmonitor.main.name='$NAME'
-set wrtmonitor.main.interval='60'
-commit wrtmonitor
+cat > /etc/config/wrtmonitor <<EOF
+config wrtmonitor 'main'
+	option enabled '1'
+	option server_url '$SERVER_URL'
+	option device_token '$DEVICE_TOKEN'
+	option device_id '$DEVICE_ID'
+	option name '$NAME'
+	option interval '60'
 EOF
 
 /etc/init.d/wrtmonitor enable
