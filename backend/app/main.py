@@ -165,6 +165,13 @@ def devices_page(config: Settings = Depends(settings), db: Session = Depends(get
     rows = []
     for device in devices:
         last_seen = device.last_seen_at.isoformat() if device.last_seen_at else "нет данных"
+        delete_form = ""
+        if device.last_seen_at is None and device.status in {"provisioned", "offline"}:
+            delete_form = (
+                f'<form method="post" action="/devices/{device.id}/delete" style="margin:0">'
+                '<button type="submit">Удалить</button>'
+                "</form>"
+            )
         rows.append(
             "<tr>"
             f"<td>{escape(device.name or '')}</td>"
@@ -173,9 +180,10 @@ def devices_page(config: Settings = Depends(settings), db: Session = Depends(get
             f"<td>{escape(device.firmware or '')}</td>"
             f"<td>{escape(device.status)}</td>"
             f"<td>{escape(last_seen)}</td>"
+            f"<td>{delete_form}</td>"
             "</tr>"
         )
-    table_body = "\n".join(rows) if rows else '<tr><td colspan="6">Устройства пока не подключены</td></tr>'
+    table_body = "\n".join(rows) if rows else '<tr><td colspan="7">Устройства пока не подключены</td></tr>'
     return HTMLResponse(
         f"""
         <html lang="ru">
@@ -201,6 +209,7 @@ def devices_page(config: Settings = Depends(settings), db: Session = Depends(get
                 <th>Прошивка</th>
                 <th>Статус</th>
                 <th>Последняя связь</th>
+                <th>Действия</th>
               </tr>
             </thead>
             <tbody>{table_body}</tbody>
@@ -209,6 +218,17 @@ def devices_page(config: Settings = Depends(settings), db: Session = Depends(get
         </html>
         """
     )
+
+
+@app.post("/devices/{device_id}/delete")
+def delete_device_page(device_id: UUID, config: Settings = Depends(settings), db: Session = Depends(get_db)) -> RedirectResponse:
+    if is_setup_required(db, config):
+        return RedirectResponse("/setup", status_code=303)
+    device = db.get(Device, device_id)
+    if device and device.last_seen_at is None and device.status in {"provisioned", "offline"}:
+        db.delete(device)
+        db.commit()
+    return RedirectResponse("/devices", status_code=303)
 
 
 @app.get("/setup", response_class=HTMLResponse)
@@ -293,19 +313,31 @@ def list_devices(_: User = Depends(current_user), db: Session = Depends(get_db))
 def provision_device(payload: DeviceProvisionRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, str]:
     device_token = secrets.token_urlsafe(32)
     now = now_utc()
-    device = Device(
-        id=uuid4(),
-        name=payload.name,
-        hostname=payload.hostname,
-        model=payload.model,
-        firmware=payload.firmware,
-        token_hash=hash_token(device_token),
-        status="provisioned",
-        last_seen_at=None,
-        created_at=now,
-        updated_at=now,
-    )
-    db.add(device)
+    device = db.scalars(
+        select(Device)
+        .where(Device.hostname == payload.hostname, Device.name == payload.name, Device.model == payload.model)
+        .order_by(Device.updated_at.desc())
+        .limit(1)
+    ).first()
+    if device:
+        device.firmware = payload.firmware
+        device.token_hash = hash_token(device_token)
+        device.status = "provisioned"
+        device.updated_at = now
+    else:
+        device = Device(
+            id=uuid4(),
+            name=payload.name,
+            hostname=payload.hostname,
+            model=payload.model,
+            firmware=payload.firmware,
+            token_hash=hash_token(device_token),
+            status="provisioned",
+            last_seen_at=None,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(device)
     audit(db, user.id, "device.provision", "device", str(device.id), {"hostname": payload.hostname})
     db.commit()
     return {"device_id": str(device.id), "device_token": device_token}
