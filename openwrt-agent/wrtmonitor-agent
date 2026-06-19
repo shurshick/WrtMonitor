@@ -15,10 +15,15 @@ api() {
   method="$1"
   path="$2"
   body="${3:-{}}"
-  curl -fsS -X "$method" "$(server_url)$path" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $(device_token)" \
-    -d "$body"
+  if [ "$method" = "GET" ]; then
+    curl -fsS -X "$method" "$(server_url)$path" \
+      -H "Authorization: Bearer $(device_token)"
+  else
+    curl -fsS -X "$method" "$(server_url)$path" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $(device_token)" \
+      -d "$body"
+  fi
 }
 
 json_escape() {
@@ -53,18 +58,21 @@ telemetry() {
   [ -n "$(device_id)" ] || register_device
   uptime_value="$(cut -d. -f1 /proc/uptime 2>/dev/null || echo 0)"
   load_value="$(cut -d' ' -f1 /proc/loadavg 2>/dev/null || echo 0)"
+  case "$uptime_value" in ""|*[!0-9]*) uptime_value="0" ;; esac
+  load_value="$(json_escape "$load_value")"
   body="{\"device_id\":\"$(device_id)\",\"telemetry\":{\"system\":{\"uptime\":$uptime_value,\"load\":\"$load_value\"},\"wifi\":$(wifi_status_json)}}"
   api POST /api/v1/agent/telemetry "$body" >/dev/null
 }
 
 wifi_status_json() {
-  status="$(wifi status 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' || true)"
+  status="$(wifi status 2>/dev/null | tr '\n' ' ' || true)"
+  status="$(json_escape "$status")"
   printf '{"raw":"%s"}' "$status"
 }
 
 poll_commands() {
   [ -n "$(device_id)" ] || register_device
-  commands="$(api GET /api/v1/agent/commands '{}')"
+  commands="$(api GET /api/v1/agent/commands)"
   printf '%s' "$commands" | grep -q '"id"' || return 0
   printf '%s\n' "$commands" | sed 's/},{/}\n{/g' | while read -r item; do
     command_id="$(printf '%s' "$item" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
