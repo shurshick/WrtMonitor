@@ -17,6 +17,21 @@ def test_postgresql_url_is_required():
         validate_database_url("sqlite:///tmp.db")
 
 
+def test_default_database_password_is_rejected():
+    with pytest.raises(ValueError):
+        validate_database_url("postgresql+psycopg://wrtmonitor:change-me-db-password@postgres:5432/wrtmonitor")
+
+
+def test_default_database_password_requires_explicit_dev_flag():
+    assert (
+        validate_database_url(
+            "postgresql+psycopg://wrtmonitor:change-me-db-password@postgres:5432/wrtmonitor",
+            allow_insecure_dev_defaults=True,
+        )
+        == "postgresql+psycopg://wrtmonitor:change-me-db-password@postgres:5432/wrtmonitor"
+    )
+
+
 def test_default_jwt_secret_is_rejected():
     with pytest.raises(ValueError):
         validate_jwt_secret("change-me-long-random-secret")

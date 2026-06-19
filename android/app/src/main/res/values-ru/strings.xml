@@ -27,6 +27,13 @@
     <string name="open">Открыть</string>
     <string name="telemetry">Телеметрия</string>
     <string name="updated_at">Обновлено</string>
+    <string name="age">Возраст, сек</string>
+    <string name="source">Источник</string>
+    <string name="stale_telemetry">Телеметрия устарела</string>
     <string name="uptime">Время работы</string>
     <string name="load">Нагрузка</string>
+    <string name="memory">Память доступно/всего</string>
+    <string name="wifi_radios">Wi-Fi модули</string>
+    <string name="show_raw_telemetry">Показать raw telemetry</string>
+    <string name="hide_raw_telemetry">Скрыть raw telemetry</string>
 </resources>

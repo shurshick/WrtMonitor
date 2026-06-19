@@ -27,6 +27,13 @@
     <string name="open">Open</string>
     <string name="telemetry">Telemetry</string>
     <string name="updated_at">Updated</string>
+    <string name="age">Age, sec</string>
+    <string name="source">Source</string>
+    <string name="stale_telemetry">Telemetry is stale</string>
     <string name="uptime">Uptime</string>
     <string name="load">Load</string>
+    <string name="memory">Memory available/total</string>
+    <string name="wifi_radios">Wi-Fi radios</string>
+    <string name="show_raw_telemetry">Show raw telemetry</string>
+    <string name="hide_raw_telemetry">Hide raw telemetry</string>
 </resources>

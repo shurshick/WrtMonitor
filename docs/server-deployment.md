@@ -1,13 +1,13 @@
 ﻿# Развёртывание серверной части
 
-Этот документ описывает установку сервера `wrtmonitor` для тестовой версии `0.1.0-test.10`.
+Этот документ описывает установку сервера `wrtmonitor` для тестовой версии `0.1.0-test.11`.
 
 Сервер состоит из двух контейнеров:
 
 - `wrtmonitor` — API и веб-страница первичной настройки;
 - `postgres` — база данных PostgreSQL.
 
-С версии `0.1.0-test.10` сервер ведёт состояние схемы базы через Alembic. При первом запуске существующая база помечается как базовая, а следующие изменения схемы будут применяться миграциями при старте контейнера.
+С версии `0.1.0-test.11` сервер ведёт состояние схемы базы через Alembic. При первом запуске существующая база помечается как базовая, а следующие изменения схемы будут применяться миграциями при старте контейнера.
 
 Сервер можно запускать на Docker-сервере, VPS, домашнем Linux-сервере, NAS с Docker или через TrueNAS Custom App.
 
@@ -55,7 +55,7 @@ WRTMONITOR_ENABLE_API_DOCS=false
 - `WRTMONITOR_ALLOW_INSECURE_LOCAL` — для NPM/HTTPS ставьте `false`. `true` нужен только для временного локального HTTP-теста без прокси.
 - `WRTMONITOR_ENABLE_API_DOCS` — включает `/docs`, `/redoc` и `/openapi.json`. Для внешнего тестового сервера оставьте `false`.
 
-Начиная с `0.1.0-test.10`, сервер не запускается с дефолтным `WRTMONITOR_JWT_SECRET`. Замените пример на свою длинную случайную строку до первого запуска.
+Начиная с `0.1.0-test.11`, сервер не запускается с дефолтным `WRTMONITOR_JWT_SECRET` или дефолтным паролем PostgreSQL. Замените примеры на свои длинные случайные значения до первого запуска.
 
 ## Схема с Nginx Proxy Manager
 
@@ -87,12 +87,12 @@ PostgreSQL container
 ## Установка на TrueNAS Custom App
 
 1. Откройте релиз:
-   [v0.1.0-test.10](https://github.com/shurshick/wrtmonitor/releases/tag/v0.1.0-test.10)
+   [v0.1.0-test.11](https://github.com/shurshick/wrtmonitor/releases/tag/v0.1.0-test.11)
 
 2. Скачайте файл:
 
    ```text
-   wrtmonitor-truenas-0.1.0-test.10.yaml
+   wrtmonitor-truenas-0.1.0-test.11.yaml
    ```
 
 3. Если пакет GHCR приватный, добавьте в TrueNAS учётные данные для `ghcr.io`.
@@ -100,7 +100,7 @@ PostgreSQL container
    Образ сервера:
 
    ```text
-   ghcr.io/shurshick/wrtmonitor:0.1.0-test.10
+   ghcr.io/shurshick/wrtmonitor:0.1.0-test.11
    ```
 
 4. Перед вставкой YAML в TrueNAS замените тестовые значения.
@@ -121,7 +121,16 @@ PostgreSQL container
    WRTMONITOR_JWT_SECRET: change-me-long-random-jwt-secret
    ```
 
-   Значение `change-me-long-random-jwt-secret` оставлено как заметный placeholder. Его обязательно нужно заменить.
+   Значения `change-me-long-random-jwt-secret` и `change-me-postgres-password` оставлены как заметные placeholders. Их обязательно нужно заменить, иначе сервер не стартует.
+
+## Upgrade from v0.1.0-test.10
+
+1. PostgreSQL volume удалять не нужно.
+2. Проверьте, что `POSTGRES_PASSWORD` и пароль внутри `WRTMONITOR_DATABASE_URL` не начинаются с `change-me`.
+3. Проверьте, что `WRTMONITOR_JWT_SECRET` не дефолтный и длиннее 32 символов.
+4. Обновите серверный image на `ghcr.io/shurshick/wrtmonitor:0.1.0-test.11`.
+5. Обновите OpenWrt agent на роутере, чтобы получить стабильный multi-radio telemetry collector.
+6. Обновите Android APK, чтобы экран устройства показывал новые поля telemetry.
 
 5. В TrueNAS создайте Custom App из подготовленного YAML.
 

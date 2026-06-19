@@ -1,4 +1,5 @@
 import os
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -60,6 +61,7 @@ def test_complete_setup_flushes_user_before_audit(monkeypatch):
         jwt_secret="test-secret",
         default_locale="ru",
         allow_insecure_local=False,
+        allow_insecure_dev_defaults=False,
         enable_api_docs=False,
     )
 
@@ -201,12 +203,13 @@ def test_router_registration_telemetry_and_latest_api_e2e():
         "wifi": {"available": True, "radios": [{"name": "radio0", "up": True, "channel": "6"}]},
         "network": {"interfaces": [{"name": "lan", "up": True}]},
     }
-    telemetry_response = client.post(
-        "/api/v1/agent/telemetry",
-        headers=agent_headers,
-        json={"device_id": device_id, "telemetry": telemetry},
-    )
-    assert telemetry_response.status_code == 200
+    for index in range(105):
+        telemetry_response = client.post(
+            "/api/v1/agent/telemetry",
+            headers=agent_headers,
+            json={"device_id": device_id, "telemetry": telemetry | {"sequence": index}},
+        )
+        assert telemetry_response.status_code == 200
 
     latest_response = client.get(f"/api/v1/devices/{device_id}/telemetry/latest", headers=admin_headers)
     assert latest_response.status_code == 200
@@ -214,3 +217,12 @@ def test_router_registration_telemetry_and_latest_api_e2e():
     assert latest["device_id"] == device_id
     assert latest["telemetry"]["system"]["uptime"] == 123
     assert latest["telemetry"]["wifi"]["radios"][0]["name"] == "radio0"
+    assert latest["telemetry"]["sequence"] == 104
+    assert latest["age_seconds"] >= 0
+    assert latest["is_stale"] is False
+    assert latest["source"] == "agent"
+
+    session_factory = sessionmaker(bind=get_engine(), autoflush=False, expire_on_commit=False)
+    with session_factory() as session:
+        count = session.query(DeviceTelemetry).filter(DeviceTelemetry.device_id == UUID(device_id)).count()
+    assert count == 100

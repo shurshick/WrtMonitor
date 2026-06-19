@@ -34,19 +34,31 @@ def has_migration_state() -> bool:
         return bool(connection.execute(text("select to_regclass('public.alembic_version') is not null")).scalar())
 
 
-def init_db() -> None:
+def has_existing_schema() -> bool:
+    with get_engine().connect() as connection:
+        return bool(connection.execute(text("select to_regclass('public.users') is not null or to_regclass('public.devices') is not null")).scalar())
+
+
+def migrate_db() -> None:
     from . import models  # noqa: F401
 
     if has_migration_state():
         command.upgrade(alembic_config(), "head")
         return
 
-    Base.metadata.create_all(bind=get_engine())
-    command.stamp(alembic_config(), "head")
+    if has_existing_schema():
+        command.stamp(alembic_config(), "head")
+        return
+
+    command.upgrade(alembic_config(), "head")
+
+
+def init_db() -> None:
+    migrate_db()
 
 
 def upgrade_db() -> None:
-    command.upgrade(alembic_config(), "head")
+    migrate_db()
 
 
 def check_database() -> bool:

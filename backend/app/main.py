@@ -9,7 +9,7 @@ import uvicorn
 from fastapi import Cookie, Depends, FastAPI, Form, Header, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .config import APP_NAME, APP_VERSION, Settings, load_settings, validate_server_url
@@ -25,6 +25,9 @@ ALLOWED_COMMANDS = {
     "wifi.set_ssid",
     "network.interfaces",
 }
+
+TELEMETRY_STALE_SECONDS = 5 * 60
+TELEMETRY_RETENTION_PER_DEVICE = 100
 
 
 _startup_settings = load_settings()
@@ -153,6 +156,20 @@ def web_user_from_session(session_token: str | None, config: Settings, db: Sessi
 
 def audit(db: Session, user_id: UUID | None, action: str, object_type: str | None = None, object_id: str | None = None, details: dict[str, Any] | None = None) -> None:
     db.add(AuditLog(id=uuid4(), user_id=user_id, action=action, object_type=object_type, object_id=object_id, details=details, created_at=now_utc()))
+
+
+def cleanup_device_telemetry(db: Session, device_id: UUID, keep: int = TELEMETRY_RETENTION_PER_DEVICE) -> None:
+    old_ids = [
+        row[0]
+        for row in db.execute(
+            select(DeviceTelemetry.id)
+            .where(DeviceTelemetry.device_id == device_id)
+            .order_by(DeviceTelemetry.created_at.desc())
+            .offset(keep)
+        ).all()
+    ]
+    if old_ids:
+        db.execute(delete(DeviceTelemetry).where(DeviceTelemetry.id.in_(old_ids)))
 
 
 @app.get("/health")
@@ -397,8 +414,16 @@ def latest_device_telemetry(device_id: UUID, _: User = Depends(current_user), db
         .limit(1)
     ).first()
     if not telemetry:
-        return {"device_id": str(device_id), "telemetry": None, "created_at": None}
-    return {"device_id": str(device_id), "telemetry": telemetry.payload, "created_at": telemetry.created_at.isoformat()}
+        return {"device_id": str(device_id), "telemetry": None, "created_at": None, "age_seconds": None, "is_stale": False, "source": "agent"}
+    age_seconds = max(0, int((now_utc() - telemetry.created_at).total_seconds()))
+    return {
+        "device_id": str(device_id),
+        "telemetry": telemetry.payload,
+        "created_at": telemetry.created_at.isoformat(),
+        "age_seconds": age_seconds,
+        "is_stale": age_seconds > TELEMETRY_STALE_SECONDS,
+        "source": "agent",
+    }
 
 
 @app.post("/api/v1/devices/provision")
@@ -454,6 +479,8 @@ def agent_telemetry(payload: TelemetryRequest, authorization: str | None = Heade
     device.last_seen_at = now
     device.updated_at = now
     db.add(DeviceTelemetry(id=uuid4(), device_id=device.id, payload=payload.telemetry, created_at=now))
+    db.flush()
+    cleanup_device_telemetry(db, device.id)
     db.commit()
     return {"status": "ok"}
 

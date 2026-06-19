@@ -31,6 +31,36 @@ json_escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
+require_json_tool() {
+  if command -v jsonfilter >/dev/null 2>&1; then
+    return 0
+  fi
+  logger -t wrtmonitor "jsonfilter is required for API response parsing"
+  return 1
+}
+
+json_get_string() {
+  file="$1"
+  expr="$2"
+  require_json_tool || return 1
+  jsonfilter -i "$file" -e "$expr" 2>/dev/null | head -n 1
+}
+
+json_get_number() {
+  json_get_string "$1" "$2"
+}
+
+json_get_bool() {
+  json_get_string "$1" "$2"
+}
+
+json_get_object() {
+  file="$1"
+  expr="$2"
+  require_json_tool || return 1
+  jsonfilter -i "$file" -e "$expr" 2>/dev/null | head -n 1
+}
+
 json_object_or_raw() {
   raw="$(tr '\n' ' ' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
   case "$raw" in
@@ -80,7 +110,9 @@ register_device() {
   name="$(json_escape "$(cfg name)")"
   body="{\"hostname\":\"$hostname\",\"model\":\"$model\",\"firmware\":\"$firmware\",\"name\":\"$name\",\"device_token\":\"$(json_escape "$(device_token)")\"}"
   response="$(curl -fsS -X POST "$(server_url)/api/v1/agent/register" -H "Content-Type: application/json" -d "$body")"
-  id="$(printf '%s' "$response" | sed -n 's/.*"device_id":"\([^"]*\)".*/\1/p')"
+  printf '%s' "$response" >/tmp/wrtmonitor-register-response
+  id="$(json_get_string /tmp/wrtmonitor-register-response '@.device_id')"
+  rm -f /tmp/wrtmonitor-register-response
   [ -n "$id" ] || return 1
   uci set "$CONFIG.device_id=$id"
   uci commit wrtmonitor
@@ -107,30 +139,62 @@ memory_json() {
 }
 
 wifi_status_json() {
-  if command -v wifi >/dev/null 2>&1 && wifi status >/tmp/wrtmonitor-wifi-status 2>/dev/null; then
-    raw="$(json_object_or_raw </tmp/wrtmonitor-wifi-status)"
-    if grep -q '"up": true' /tmp/wrtmonitor-wifi-status 2>/dev/null; then
-      printf '{"available":true,"up":true,"status":%s}' "$raw"
-    else
-      printf '{"available":true,"up":false,"status":%s}' "$raw"
-    fi
+  radios=""
+  index=0
+  while uci -q get "wireless.@wifi-device[$index]" >/dev/null 2>&1; do
+    name="radio$index"
+    disabled="$(uci -q get "wireless.@wifi-device[$index].disabled" 2>/dev/null || echo 0)"
+    channel="$(uci -q get "wireless.@wifi-device[$index].channel" 2>/dev/null || true)"
+    band="$(uci -q get "wireless.@wifi-device[$index].band" 2>/dev/null || true)"
+    ssids=""
+    encryption=""
+    iface_index=0
+    while uci -q get "wireless.@wifi-iface[$iface_index]" >/dev/null 2>&1; do
+      iface_device="$(uci -q get "wireless.@wifi-iface[$iface_index].device" 2>/dev/null || true)"
+      if [ "$iface_device" = "$name" ]; then
+        ssid="$(uci -q get "wireless.@wifi-iface[$iface_index].ssid" 2>/dev/null || true)"
+        encryption="$(uci -q get "wireless.@wifi-iface[$iface_index].encryption" 2>/dev/null || true)"
+        if [ -n "$ssid" ]; then
+          [ -n "$ssids" ] && ssids="$ssids,"
+          ssids="$ssids\"$(json_escape "$ssid")\""
+        fi
+      fi
+      iface_index=$((iface_index + 1))
+    done
+    up=true
+    [ "$disabled" = "1" ] && up=false
+    radio="{\"name\":\"$name\",\"up\":$up,\"ssid\":[$ssids]"
+    [ -n "$channel" ] && radio="$radio,\"channel\":\"$(json_escape "$channel")\""
+    [ -n "$band" ] && radio="$radio,\"band\":\"$(json_escape "$band")\""
+    [ -n "${encryption:-}" ] && radio="$radio,\"encryption\":\"$(json_escape "$encryption")\""
+    radio="$radio}"
+    [ -n "$radios" ] && radios="$radios,"
+    radios="$radios$radio"
+    index=$((index + 1))
+  done
+  if [ "$index" -gt 0 ]; then
+    printf '{"available":true,"radios":[%s]}' "$radios"
   else
-    printf '{"available":false}'
+    printf '{"available":false,"radios":[]}'
   fi
-  rm -f /tmp/wrtmonitor-wifi-status
 }
 
 poll_commands() {
   [ -n "$(device_id)" ] || register_device
+  require_json_tool || return 1
   commands="$(api GET /api/v1/agent/commands)"
-  printf '%s' "$commands" | grep -q '"id"' || return 0
-  printf '%s\n' "$commands" | sed 's/},{/}\n{/g' | while read -r item; do
-    command_id="$(printf '%s' "$item" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
-    command_type="$(printf '%s' "$item" | sed -n 's/.*"type":"\([^"]*\)".*/\1/p')"
-    command_payload="$(printf '%s' "$item" | sed -n 's/.*"payload":{\([^}]*\)}.*/{\1}/p')"
-    [ -n "$command_id" ] || continue
+  printf '%s' "$commands" >/tmp/wrtmonitor-commands
+  index=0
+  while true; do
+    command_id="$(json_get_string /tmp/wrtmonitor-commands "@[$index].id")"
+    command_type="$(json_get_string /tmp/wrtmonitor-commands "@[$index].type")"
+    command_payload="$(json_get_object /tmp/wrtmonitor-commands "@[$index].payload")"
+    [ -n "$command_id" ] || break
+    [ -n "$command_payload" ] || command_payload="{}"
     execute_command "$command_id" "$command_type" "$command_payload"
+    index=$((index + 1))
   done
+  rm -f /tmp/wrtmonitor-commands
 }
 
 execute_command() {
@@ -148,19 +212,27 @@ execute_command() {
       result="$(wifi_status_json)"
       ;;
     wifi.set_enabled)
-      enabled="$(printf '%s' "$command_payload" | sed -n 's/.*"enabled":\([^,}]*\).*/\1/p')"
+      printf '%s' "$command_payload" >/tmp/wrtmonitor-command-payload
+      enabled="$(json_get_bool /tmp/wrtmonitor-command-payload '@.enabled')"
+      radio="$(json_get_string /tmp/wrtmonitor-command-payload '@.radio')"
+      rm -f /tmp/wrtmonitor-command-payload
+      [ -n "$radio" ] || radio="@wifi-device[0]"
       if [ "$enabled" = "false" ]; then
-        uci set wireless.@wifi-device[0].disabled='1' >/dev/null 2>&1 || status="failed"
+        uci set "wireless.$radio.disabled=1" >/dev/null 2>&1 || status="failed"
       else
-        uci set wireless.@wifi-device[0].disabled='0' >/dev/null 2>&1 || status="failed"
+        uci set "wireless.$radio.disabled=0" >/dev/null 2>&1 || status="failed"
       fi
       uci commit wireless >/dev/null 2>&1 || status="failed"
       wifi reload >/dev/null 2>&1 || status="failed"
       ;;
     wifi.set_ssid)
-      ssid="$(printf '%s' "$command_payload" | sed -n 's/.*"ssid":"\([^"]*\)".*/\1/p')"
+      printf '%s' "$command_payload" >/tmp/wrtmonitor-command-payload
+      ssid="$(json_get_string /tmp/wrtmonitor-command-payload '@.ssid')"
+      iface="$(json_get_string /tmp/wrtmonitor-command-payload '@.iface')"
+      rm -f /tmp/wrtmonitor-command-payload
+      [ -n "$iface" ] || iface="@wifi-iface[0]"
       if [ -n "$ssid" ]; then
-        uci set wireless.@wifi-iface[0].ssid="$ssid" >/dev/null 2>&1 || status="failed"
+        uci set "wireless.$iface.ssid=$ssid" >/dev/null 2>&1 || status="failed"
         uci commit wireless >/dev/null 2>&1 || status="failed"
         wifi reload >/dev/null 2>&1 || status="failed"
       else

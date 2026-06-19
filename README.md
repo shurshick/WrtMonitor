@@ -59,7 +59,7 @@ WRTMONITOR_PUBLIC_SERVER_URL=http://server-ip:8088
 Образ тестовой версии:
 
 ```text
-ghcr.io/shurshick/wrtmonitor:0.1.0-test.10
+ghcr.io/shurshick/wrtmonitor:0.1.0-test.11
 ```
 
 ## Подключение клиентов
@@ -113,9 +113,11 @@ OpenWrt agent выполняет только команды из allowlist:
 
 - [Развёртывание серверной части](docs/server-deployment.md)
 - [Архитектура](docs/architecture.md)
+- [Telemetry](docs/telemetry.md)
 - [OpenWrt agent](docs/openwrt-agent.md)
 - [Android-приложение](docs/android.md)
 - [TrueNAS Custom App](docs/truenas-custom-app.md)
 - [Безопасность](docs/security.md)
 - [Roadmap](docs/roadmap.md)
+- [Changelog](CHANGELOG.md)
 

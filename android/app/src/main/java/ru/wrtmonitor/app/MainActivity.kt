@@ -81,6 +81,9 @@ private data class RouterDevice(
 
 private data class DeviceTelemetry(
     val createdAt: String?,
+    val ageSeconds: Long?,
+    val isStale: Boolean,
+    val source: String,
     val payload: JSONObject?
 )
 
@@ -418,19 +421,55 @@ private fun DeviceScreen(serverUrl: String, accessToken: String, device: RouterD
 
 @Composable
 private fun TelemetryCard(telemetry: DeviceTelemetry) {
+    var showRaw by remember { mutableStateOf(false) }
     val payload = telemetry.payload ?: JSONObject()
     val system = payload.optJSONObject("system")
+    val memory = system?.optJSONObject("memory")
     val wifi = payload.optJSONObject("wifi")
     val network = payload.optJSONObject("network")
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("${stringResource(R.string.updated_at)}: ${telemetry.createdAt ?: stringResource(R.string.no_data)}")
+            Text("${stringResource(R.string.age)}: ${telemetry.ageSeconds ?: stringResource(R.string.no_data)}")
+            Text("${stringResource(R.string.source)}: ${telemetry.source}")
+            if (telemetry.isStale) {
+                Text(stringResource(R.string.stale_telemetry))
+            }
             Text("${stringResource(R.string.uptime)}: ${system?.optLong("uptime", 0) ?: 0}")
             Text("${stringResource(R.string.load)}: ${system?.optString("load") ?: stringResource(R.string.no_data)}")
+            if (memory != null) {
+                Text("${stringResource(R.string.memory)}: ${memory.optLong("available_kb", 0)} / ${memory.optLong("total_kb", 0)} KB")
+            }
+            Text("${stringResource(R.string.network)}: ${network != null}")
             Text("${stringResource(R.string.wifi)}: ${wifi?.optBoolean("available", false) ?: false}")
-            Text("${stringResource(R.string.network)}: ${network?.optBoolean("available", true) ?: true}")
-            Text(payload.toString(2))
+            WifiRadios(wifi)
+            Button(onClick = { showRaw = !showRaw }) {
+                Text(if (showRaw) stringResource(R.string.hide_raw_telemetry) else stringResource(R.string.show_raw_telemetry))
+            }
+            if (showRaw) {
+                Text(payload.toString(2))
+            }
         }
+    }
+}
+
+@Composable
+private fun WifiRadios(wifi: JSONObject?) {
+    val radios = wifi?.optJSONArray("radios") ?: JSONArray()
+    if (radios.length() == 0) {
+        Text("${stringResource(R.string.wifi_radios)}: ${stringResource(R.string.no_data)}")
+        return
+    }
+    Text(stringResource(R.string.wifi_radios), style = MaterialTheme.typography.titleMedium)
+    for (index in 0 until radios.length()) {
+        val radio = radios.optJSONObject(index) ?: continue
+        val ssids = radio.optJSONArray("ssid") ?: JSONArray()
+        val ssidText = (0 until ssids.length()).joinToString(", ") { ssids.optString(it) }
+        Text(
+            "${radio.optString("name", "radio$index")}: " +
+                "${if (radio.optBoolean("up", false)) stringResource(R.string.online) else "offline"}, " +
+                "SSID: ${ssidText.ifBlank { stringResource(R.string.no_data) }}"
+        )
     }
 }
 
@@ -480,6 +519,9 @@ private fun fetchLatestTelemetry(serverUrl: String, accessToken: String, deviceI
     val json = JSONObject(response)
     return DeviceTelemetry(
         createdAt = json.optString("created_at").takeIf { it.isNotBlank() && it != "null" },
+        ageSeconds = if (json.isNull("age_seconds")) null else json.optLong("age_seconds"),
+        isStale = json.optBoolean("is_stale", false),
+        source = json.optString("source", "agent"),
         payload = json.optJSONObject("telemetry")
     )
 }

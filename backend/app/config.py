@@ -1,11 +1,11 @@
 import ipaddress
 import os
 from dataclasses import dataclass
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 
 APP_NAME = "wrtmonitor"
-APP_VERSION = "0.1.0-test.10"
+APP_VERSION = "0.1.0-test.11"
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,7 @@ class Settings:
     jwt_secret: str
     default_locale: str
     allow_insecure_local: bool
+    allow_insecure_dev_defaults: bool
     enable_api_docs: bool
 
 
@@ -56,10 +57,13 @@ def validate_server_url(value: str, allow_insecure_local: bool = False) -> str:
     return normalized
 
 
-def validate_database_url(value: str) -> str:
+def validate_database_url(value: str, allow_insecure_dev_defaults: bool = False) -> str:
     parsed = urlparse(value.strip())
     if parsed.scheme != "postgresql+psycopg" or not parsed.hostname or not parsed.path.strip("/"):
         raise ValueError("WRTMONITOR_DATABASE_URL must be postgresql+psycopg://user:password@host:5432/db")
+    password = unquote(parsed.password or "")
+    if not allow_insecure_dev_defaults and (not password or password.startswith("change-me")):
+        raise ValueError("WRTMONITOR_DATABASE_URL must contain a non-default database password")
     return value.strip()
 
 
@@ -74,6 +78,7 @@ def validate_jwt_secret(value: str | None) -> str:
 
 def load_settings() -> Settings:
     allow_insecure_local = bool_from_env(os.getenv("WRTMONITOR_ALLOW_INSECURE_LOCAL"), False)
+    allow_insecure_dev_defaults = bool_from_env(os.getenv("WRTMONITOR_ALLOW_INSECURE_DEV_DEFAULTS"), False)
     public_url = os.getenv("WRTMONITOR_PUBLIC_SERVER_URL", "").strip() or None
     if public_url:
         public_url = validate_server_url(public_url, allow_insecure_local)
@@ -83,13 +88,15 @@ def load_settings() -> Settings:
             os.getenv(
                 "WRTMONITOR_DATABASE_URL",
                 "postgresql+psycopg://wrtmonitor:change-me-db-password@postgres:5432/wrtmonitor",
-            )
+            ),
+            allow_insecure_dev_defaults,
         ),
         bind_host=os.getenv("WRTMONITOR_BIND_HOST", "0.0.0.0"),
         bind_port=int(os.getenv("WRTMONITOR_BIND_PORT", "8080")),
         jwt_secret=validate_jwt_secret(os.getenv("WRTMONITOR_JWT_SECRET")),
         default_locale=os.getenv("WRTMONITOR_DEFAULT_LOCALE", "ru"),
         allow_insecure_local=allow_insecure_local,
+        allow_insecure_dev_defaults=allow_insecure_dev_defaults,
         enable_api_docs=bool_from_env(os.getenv("WRTMONITOR_ENABLE_API_DOCS"), False),
     )
 

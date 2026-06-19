@@ -32,3 +32,12 @@ sh install-openwrt.sh \
 - `network.interfaces`.
 
 Произвольный `shell.exec` и произвольный `uci.apply` не поддерживаются.
+
+## v0.1.0-test.11 stability notes
+
+- Agent остаётся POSIX/BusyBox `ash` shell script.
+- CI проверяет синтаксис командой `sh -n openwrt-agent/wrtmonitor-agent`.
+- Критичные JSON-поля из API response читаются через `jsonfilter`.
+- Если `jsonfilter` недоступен, agent пишет ошибку в logread и не выполняет команды.
+- Wi-Fi telemetry собирается как multi-radio структура из UCI `wireless`.
+- Команды `wifi.set_enabled` и `wifi.set_ssid` принимают параметры `radio` и `iface`; если они не переданы, используется первый radio/iface для обратной совместимости.
