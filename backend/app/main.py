@@ -173,7 +173,7 @@ def index(config: Settings = Depends(settings), db: Session = Depends(get_db), w
 
 
 @app.get("/login", response_class=HTMLResponse)
-def login_page(config: Settings = Depends(settings), db: Session = Depends(get_db)) -> HTMLResponse | RedirectResponse:
+def login_page(config: Settings = Depends(settings), db: Session = Depends(get_db)):
     if is_setup_required(db, config):
         return RedirectResponse("/setup", status_code=303)
     return HTMLResponse(
@@ -194,7 +194,7 @@ def login_page(config: Settings = Depends(settings), db: Session = Depends(get_d
 
 
 @app.post("/login")
-def login_form(username: str = Form(...), password: str = Form(...), config: Settings = Depends(settings), db: Session = Depends(get_db)) -> RedirectResponse | HTMLResponse:
+def login_form(username: str = Form(...), password: str = Form(...), config: Settings = Depends(settings), db: Session = Depends(get_db)):
     if is_setup_required(db, config):
         return RedirectResponse("/setup", status_code=303)
     user = db.scalars(select(User).where(User.username == username, User.disabled.is_(False))).first()
@@ -219,7 +219,7 @@ def logout_form() -> RedirectResponse:
 
 
 @app.get("/devices", response_class=HTMLResponse)
-def devices_page(config: Settings = Depends(settings), db: Session = Depends(get_db), wrtmonitor_session: str | None = Cookie(default=None)) -> HTMLResponse | RedirectResponse:
+def devices_page(config: Settings = Depends(settings), db: Session = Depends(get_db), wrtmonitor_session: str | None = Cookie(default=None)):
     if is_setup_required(db, config):
         return RedirectResponse("/setup", status_code=303)
     user = web_user_from_session(wrtmonitor_session, config, db)
