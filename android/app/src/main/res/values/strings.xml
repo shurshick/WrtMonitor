@@ -15,4 +15,13 @@
     <string name="reboot">Reboot</string>
     <string name="apply">Apply</string>
     <string name="online">Online</string>
+    <string name="refresh">Refresh</string>
+    <string name="load_error">Could not load data</string>
+    <string name="no_routers">No routers connected yet</string>
+    <string name="router">Router</string>
+    <string name="status">Status</string>
+    <string name="model">Model</string>
+    <string name="firmware">Firmware</string>
+    <string name="last_seen">Last seen</string>
+    <string name="no_data">No data</string>
 </resources>

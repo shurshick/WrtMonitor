@@ -3,18 +3,22 @@ package ru.wrtmonitor.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,10 +29,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -37,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -59,6 +67,16 @@ private enum class Tab {
 private const val PREFS_NAME = "wrtmonitor"
 private const val PREF_SERVER_URL = "server_url"
 private const val PREF_ACCESS_TOKEN = "access_token"
+
+private data class RouterDevice(
+    val id: String,
+    val name: String,
+    val hostname: String,
+    val model: String,
+    val firmware: String,
+    val status: String,
+    val lastSeenAt: String?
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -114,7 +132,7 @@ private fun WrtMonitorApp() {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 when (tab) {
-                    Tab.Routers -> RoutersScreen()
+                    Tab.Routers -> RoutersScreen(serverUrl, accessToken)
                     Tab.Wifi -> WifiScreen()
                     Tab.Network -> NetworkScreen()
                     Tab.System -> SystemScreen()
@@ -240,16 +258,116 @@ private fun loginAdmin(serverUrl: String, username: String, password: String): S
 }
 
 @Composable
-private fun RoutersScreen() {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun RoutersScreen(serverUrl: String, accessToken: String) {
+    val scope = rememberCoroutineScope()
+    var devices by remember { mutableStateOf<List<RouterDevice>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf("") }
+
+    fun refresh() {
+        loading = true
+        error = ""
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { fetchDevices(serverUrl, accessToken) }
+            }.onSuccess {
+                devices = it
+                loading = false
+            }.onFailure {
+                error = it.message ?: "Failed to load devices"
+                loading = false
+            }
+        }
+    }
+
+    LaunchedEffect(serverUrl, accessToken) {
+        refresh()
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.routers), style = MaterialTheme.typography.titleLarge)
-            Text("HomeRouter · ${stringResource(R.string.online)}")
+            Button(onClick = { refresh() }, enabled = !loading) {
+                Text(stringResource(R.string.refresh))
+            }
+        }
+        when {
+            loading -> {
+                Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+            error.isNotBlank() -> {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.load_error))
+                        Text(error)
+                        Button(onClick = { refresh() }) { Text(stringResource(R.string.refresh)) }
+                    }
+                }
+            }
+            devices.isEmpty() -> {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.no_routers))
+                    }
+                }
+            }
+            else -> {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(devices, key = { it.id }) { device ->
+                        RouterCard(device)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RouterCard(device: RouterDevice) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(device.name.ifBlank { device.hostname.ifBlank { stringResource(R.string.router) } }, style = MaterialTheme.typography.titleMedium)
+            Text("${stringResource(R.string.status)}: ${device.status}")
+            if (device.hostname.isNotBlank()) Text("Hostname: ${device.hostname}")
+            if (device.model.isNotBlank()) Text("${stringResource(R.string.model)}: ${device.model}")
+            if (device.firmware.isNotBlank()) Text("${stringResource(R.string.firmware)}: ${device.firmware}")
+            Text("${stringResource(R.string.last_seen)}: ${device.lastSeenAt ?: stringResource(R.string.no_data)}")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { }) { Text(stringResource(R.string.reboot)) }
                 Button(onClick = { }) { Text(stringResource(R.string.settings)) }
             }
         }
+    }
+}
+
+private fun fetchDevices(serverUrl: String, accessToken: String): List<RouterDevice> {
+    val url = URL("${serverUrl.trim().trimEnd('/')}/api/v1/devices")
+    val connection = (url.openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 10_000
+        readTimeout = 10_000
+        setRequestProperty("Authorization", "Bearer $accessToken")
+    }
+    val status = connection.responseCode
+    val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+    val response = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+    if (status !in 200..299) {
+        throw IllegalStateException("HTTP $status")
+    }
+    val array = JSONArray(response)
+    return (0 until array.length()).map { index ->
+        val item = array.getJSONObject(index)
+        RouterDevice(
+            id = item.optString("id"),
+            name = item.optString("name"),
+            hostname = item.optString("hostname"),
+            model = item.optString("model"),
+            firmware = item.optString("firmware"),
+            status = item.optString("status"),
+            lastSeenAt = item.optString("last_seen_at").takeIf { it.isNotBlank() && it != "null" }
+        )
     }
 }
 

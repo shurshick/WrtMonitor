@@ -15,4 +15,13 @@
     <string name="reboot">Перезагрузить</string>
     <string name="apply">Применить</string>
     <string name="online">Онлайн</string>
+    <string name="refresh">Обновить</string>
+    <string name="load_error">Не удалось загрузить данные</string>
+    <string name="no_routers">Роутеры пока не подключены</string>
+    <string name="router">Роутер</string>
+    <string name="status">Статус</string>
+    <string name="model">Модель</string>
+    <string name="firmware">Прошивка</string>
+    <string name="last_seen">Последняя связь</string>
+    <string name="no_data">Нет данных</string>
 </resources>
