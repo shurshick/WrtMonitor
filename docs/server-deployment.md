@@ -1,11 +1,13 @@
 # Развёртывание серверной части
 
-Этот документ описывает установку сервера `wrtmonitor` для тестовой версии `0.1.0-test.8`.
+Этот документ описывает установку сервера `wrtmonitor` для тестовой версии `0.1.0-test.9`.
 
 Сервер состоит из двух контейнеров:
 
 - `wrtmonitor` — API и веб-страница первичной настройки;
 - `postgres` — база данных PostgreSQL.
+
+С версии `0.1.0-test.9` сервер ведёт состояние схемы базы через Alembic. При первом запуске существующая база помечается как базовая, а следующие изменения схемы будут применяться миграциями при старте контейнера.
 
 Сервер можно запускать на Docker-сервере, VPS, домашнем Linux-сервере, NAS с Docker или через TrueNAS Custom App.
 
@@ -39,6 +41,7 @@ POSTGRES_PASSWORD=replace-with-db-password
 POSTGRES_DB=wrtmonitor
 POSTGRES_USER=wrtmonitor
 WRTMONITOR_ALLOW_INSECURE_LOCAL=false
+WRTMONITOR_ENABLE_API_DOCS=false
 ```
 
 Назначение:
@@ -50,6 +53,7 @@ WRTMONITOR_ALLOW_INSECURE_LOCAL=false
 - `POSTGRES_DB` — имя базы, можно оставить `wrtmonitor`.
 - `POSTGRES_USER` — пользователь базы, можно оставить `wrtmonitor`.
 - `WRTMONITOR_ALLOW_INSECURE_LOCAL` — для NPM/HTTPS ставьте `false`. `true` нужен только для временного локального HTTP-теста без прокси.
+- `WRTMONITOR_ENABLE_API_DOCS` — включает `/docs`, `/redoc` и `/openapi.json`. Для внешнего тестового сервера оставьте `false`.
 
 ## Схема с Nginx Proxy Manager
 
@@ -81,12 +85,12 @@ PostgreSQL container
 ## Установка на TrueNAS Custom App
 
 1. Откройте релиз:
-   [v0.1.0-test.8](https://github.com/shurshick/wrtmonitor/releases/tag/v0.1.0-test.8)
+   [v0.1.0-test.9](https://github.com/shurshick/wrtmonitor/releases/tag/v0.1.0-test.9)
 
 2. Скачайте файл:
 
    ```text
-   wrtmonitor-truenas-0.1.0-test.8.yaml
+   wrtmonitor-truenas-0.1.0-test.9.yaml
    ```
 
 3. Если пакет GHCR приватный, добавьте в TrueNAS учётные данные для `ghcr.io`.
@@ -94,7 +98,7 @@ PostgreSQL container
    Образ сервера:
 
    ```text
-   ghcr.io/shurshick/wrtmonitor:0.1.0-test.8
+   ghcr.io/shurshick/wrtmonitor:0.1.0-test.9
    ```
 
 4. Перед вставкой YAML в TrueNAS замените тестовые значения.
@@ -187,6 +191,7 @@ http://truenas-ip:8088/setup
    WRTMONITOR_JWT_SECRET=replace-with-long-random-secret
    WRTMONITOR_DEFAULT_LOCALE=ru
    WRTMONITOR_ALLOW_INSECURE_LOCAL=false
+   WRTMONITOR_ENABLE_API_DOCS=false
    POSTGRES_DB=wrtmonitor
    POSTGRES_USER=wrtmonitor
    POSTGRES_PASSWORD=replace-with-db-password

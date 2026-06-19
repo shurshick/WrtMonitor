@@ -1,6 +1,9 @@
 from collections.abc import Generator
 from functools import lru_cache
+from pathlib import Path
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -20,10 +23,30 @@ def get_engine():
     return engine_for_url(load_settings().database_url)
 
 
+def alembic_config() -> Config:
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", load_settings().database_url)
+    return config
+
+
+def has_migration_state() -> bool:
+    with get_engine().connect() as connection:
+        return bool(connection.execute(text("select to_regclass('public.alembic_version') is not null")).scalar())
+
+
 def init_db() -> None:
     from . import models  # noqa: F401
 
+    if has_migration_state():
+        command.upgrade(alembic_config(), "head")
+        return
+
     Base.metadata.create_all(bind=get_engine())
+    command.stamp(alembic_config(), "head")
+
+
+def upgrade_db() -> None:
+    command.upgrade(alembic_config(), "head")
 
 
 def check_database() -> bool:

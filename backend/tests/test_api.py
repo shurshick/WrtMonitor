@@ -55,6 +55,7 @@ def test_complete_setup_flushes_user_before_audit(monkeypatch):
         jwt_secret="test-secret",
         default_locale="ru",
         allow_insecure_local=False,
+        enable_api_docs=False,
     )
 
     response = main.complete_setup(
@@ -132,3 +133,10 @@ def test_devices_page_requires_web_session(monkeypatch):
 
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
+
+
+def test_api_docs_are_disabled_by_default():
+    client = TestClient(app)
+    response = client.get("/docs")
+
+    assert response.status_code == 404

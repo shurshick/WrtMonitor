@@ -27,7 +27,14 @@ ALLOWED_COMMANDS = {
 }
 
 
-app = FastAPI(title=APP_NAME, version=APP_VERSION)
+_startup_settings = load_settings()
+app = FastAPI(
+    title=APP_NAME,
+    version=APP_VERSION,
+    docs_url="/docs" if _startup_settings.enable_api_docs else None,
+    redoc_url="/redoc" if _startup_settings.enable_api_docs else None,
+    openapi_url="/openapi.json" if _startup_settings.enable_api_docs else None,
+)
 
 
 class LoginRequest(BaseModel):
@@ -160,13 +167,14 @@ def index(config: Settings = Depends(settings), db: Session = Depends(get_db), w
         return RedirectResponse("/setup", status_code=303)
     user = web_user_from_session(wrtmonitor_session, config, db)
     devices_link = '<p><a href="/devices">Устройства</a></p>' if user else '<p><a href="/login">Войти</a></p>'
+    docs_link = '<p><a href="/docs">API</a></p>' if config.enable_api_docs else ""
     return HTMLResponse(
         f"""
         <html lang="ru"><body>
           <h1>{APP_NAME}</h1>
           <p>Сервер работает. Версия: {APP_VERSION}</p>
           {devices_link}
-          <p><a href="/docs">API</a></p>
+          {docs_link}
         </body></html>
         """
     )
@@ -263,7 +271,7 @@ def devices_page(config: Settings = Depends(settings), db: Session = Depends(get
         </head>
         <body>
           <h1>Устройства</h1>
-          <p><a href="/">На главную</a> · <a href="/docs">API</a></p>
+          <p><a href="/">На главную</a></p>
           <form method="post" action="/logout"><button type="submit">Выйти</button></form>
           <table>
             <thead>

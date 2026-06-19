@@ -15,7 +15,7 @@ services:
       retries: 10
 
   wrtmonitor:
-    image: ghcr.io/shurshick/wrtmonitor:0.1.0-test.8
+    image: ghcr.io/shurshick/wrtmonitor:0.1.0-test.9
     restart: unless-stopped
     depends_on:
       postgres:
@@ -30,6 +30,7 @@ services:
       WRTMONITOR_JWT_SECRET: change-me-long-random-jwt-secret
       WRTMONITOR_DEFAULT_LOCALE: ru
       WRTMONITOR_ALLOW_INSECURE_LOCAL: "false"
+      WRTMONITOR_ENABLE_API_DOCS: "false"
     healthcheck:
       test: ["CMD-SHELL", "python - <<'PY'\nimport urllib.request\nurllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5).read()\nPY"]
       interval: 30s

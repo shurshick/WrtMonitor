@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 
 APP_NAME = "wrtmonitor"
-APP_VERSION = "0.1.0-test.8"
+APP_VERSION = "0.1.0-test.9"
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,7 @@ class Settings:
     jwt_secret: str
     default_locale: str
     allow_insecure_local: bool
+    enable_api_docs: bool
 
 
 def bool_from_env(value: str | None, default: bool = False) -> bool:
@@ -80,5 +81,6 @@ def load_settings() -> Settings:
         jwt_secret=os.getenv("WRTMONITOR_JWT_SECRET", "change-me-long-random-secret"),
         default_locale=os.getenv("WRTMONITOR_DEFAULT_LOCALE", "ru"),
         allow_insecure_local=allow_insecure_local,
+        enable_api_docs=bool_from_env(os.getenv("WRTMONITOR_ENABLE_API_DOCS"), False),
     )
 
