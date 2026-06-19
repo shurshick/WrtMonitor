@@ -1,6 +1,6 @@
 # Развёртывание серверной части
 
-Документ актуален для `wrtmonitor v0.1.0-test.13`.
+Документ актуален для `wrtmonitor v0.1.0-test.14`.
 
 Сервер состоит из двух контейнеров:
 
@@ -58,12 +58,12 @@ WRTMONITOR_ENABLE_API_DOCS=false
 ## TrueNAS Custom App
 
 1. Откройте релиз:
-   [v0.1.0-test.13](https://github.com/shurshick/wrtmonitor/releases/tag/v0.1.0-test.13)
+   [v0.1.0-test.14](https://github.com/shurshick/wrtmonitor/releases/tag/v0.1.0-test.14)
 
 2. Скачайте файл:
 
    ```text
-   wrtmonitor-truenas-v0.1.0-test.13.yaml
+   wrtmonitor-truenas-v0.1.0-test.14.yaml
    ```
 
 3. При необходимости скачайте и проверьте checksums:
@@ -184,7 +184,7 @@ http://truenas-ip:8088/setup
 4. Обновите image на:
 
    ```text
-   ghcr.io/shurshick/wrtmonitor:0.1.0-test.13
+   ghcr.io/shurshick/wrtmonitor:0.1.0-test.14
    ```
 
 5. Перезапустите сервер.

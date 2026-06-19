@@ -1,16 +1,16 @@
 # Установка на TrueNAS Custom App
 
-Актуальная тестовая версия: `v0.1.0-test.13`.
+Актуальная тестовая версия: `v0.1.0-test.14`.
 
 Docker image:
 
 ```text
-ghcr.io/shurshick/wrtmonitor:0.1.0-test.13
+ghcr.io/shurshick/wrtmonitor:0.1.0-test.14
 ```
 
 ## Быстрый порядок
 
-1. Скачайте из релиза `wrtmonitor-truenas-v0.1.0-test.13.yaml`.
+1. Скачайте из релиза `wrtmonitor-truenas-v0.1.0-test.14.yaml`.
 2. Замените в YAML внешний адрес сервера.
 3. Замените `POSTGRES_PASSWORD`.
 4. Замените пароль в `WRTMONITOR_DATABASE_URL` на тот же пароль.
@@ -28,7 +28,7 @@ WRTMONITOR_PUBLIC_SERVER_URL: https://monitor.example.ru
 WRTMONITOR_JWT_SECRET: replace-with-long-random-jwt-secret
 ```
 
-Сервер `v0.1.0-test.13` не запустится с `change-me-*` секретами. Это нормально и сделано специально.
+Сервер `v0.1.0-test.14` не запустится с `change-me-*` секретами. Это нормально и сделано специально.
 
 ## Nginx Proxy Manager
 

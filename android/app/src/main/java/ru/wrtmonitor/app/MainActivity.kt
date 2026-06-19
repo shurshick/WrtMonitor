@@ -5,14 +5,20 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -26,12 +32,16 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,11 +53,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -130,13 +142,29 @@ private fun WrtMonitorApp() {
             )
             return@MaterialTheme
         }
+        BackHandler(enabled = selectedDevice != null) {
+            selectedDevice = null
+            tab = Tab.Routers
+        }
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(selectedDevice?.name?.ifBlank { selectedDevice?.hostname ?: "wrtmonitor" } ?: "wrtmonitor") },
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Image(
+                                painter = painterResource(R.mipmap.ic_launcher),
+                                contentDescription = null,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Text("WrtMonitor")
+                        }
+                    },
                     navigationIcon = {
                         if (selectedDevice != null) {
-                            IconButton(onClick = { selectedDevice = null }) {
+                            IconButton(onClick = {
+                                selectedDevice = null
+                                tab = Tab.Routers
+                            }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
                             }
                         }
@@ -145,40 +173,82 @@ private fun WrtMonitorApp() {
             },
             bottomBar = {
                 NavigationBar {
-                    NavigationBarItem(selected = tab == Tab.Routers, onClick = { tab = Tab.Routers }, icon = { Icon(Icons.Default.Router, null) }, label = { NavLabel(R.string.nav_routers) })
-                    NavigationBarItem(selected = tab == Tab.Wifi, onClick = { tab = Tab.Wifi }, icon = { Icon(Icons.Default.Wifi, null) }, label = { NavLabel(R.string.wifi) })
-                    NavigationBarItem(selected = tab == Tab.Network, onClick = { tab = Tab.Network }, icon = { Icon(Icons.Default.Router, null) }, label = { NavLabel(R.string.network) })
-                    NavigationBarItem(selected = tab == Tab.System, onClick = { tab = Tab.System }, icon = { Icon(Icons.Default.Settings, null) }, label = { NavLabel(R.string.system) })
-                    NavigationBarItem(selected = tab == Tab.Settings, onClick = { tab = Tab.Settings }, icon = { Icon(Icons.Default.Settings, null) }, label = { NavLabel(R.string.nav_settings) })
+                    AppNavigationItem(Tab.Routers, tab, { tab = it }, Icons.Default.Router, R.string.nav_routers, Color(0xFF6D4BC3))
+                    AppNavigationItem(Tab.Wifi, tab, { tab = it }, Icons.Default.Wifi, R.string.wifi, Color(0xFF008577))
+                    AppNavigationItem(Tab.Network, tab, { tab = it }, Icons.Default.Router, R.string.network, Color(0xFF1565C0))
+                    AppNavigationItem(Tab.System, tab, { tab = it }, Icons.Default.Settings, R.string.system, Color(0xFFD36122))
+                    AppNavigationItem(Tab.Settings, tab, { tab = it }, Icons.Default.Settings, R.string.nav_settings, Color(0xFF8E3A94))
                 }
             }
         ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                val device = selectedDevice
-                if (device != null) {
-                    DeviceScreen(serverUrl, accessToken, device)
-                } else {
+            val device = selectedDevice
+            if (device == null && tab == Tab.Routers) {
+                RoutersScreen(
+                    serverUrl = serverUrl,
+                    accessToken = accessToken,
+                    modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+                    onOpenDevice = { selectedDevice = it }
+                )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     when (tab) {
-                        Tab.Routers -> RoutersScreen(serverUrl, accessToken) { selectedDevice = it }
-                        Tab.Wifi -> WifiScreen()
-                        Tab.Network -> NetworkScreen()
-                        Tab.System -> SystemScreen()
-                        Tab.Settings -> SettingsScreen(serverUrl) { value ->
-                            val normalized = value.trim().trimEnd('/')
-                            prefs.edit().putString(PREF_SERVER_URL, normalized).remove(PREF_ACCESS_TOKEN).apply()
-                            serverUrl = normalized
-                            accessToken = ""
-                        }
+                        Tab.Routers -> DeviceScreen(serverUrl, accessToken, device!!)
+                        Tab.Wifi -> DeviceTabRequired(device) { WifiScreen(serverUrl, accessToken, it) }
+                        Tab.Network -> DeviceTabRequired(device) { NetworkScreen(serverUrl, accessToken, it) }
+                        Tab.System -> DeviceTabRequired(device) { SystemScreen(serverUrl, accessToken, it) }
+                        Tab.Settings -> SettingsScreen(
+                            currentServerUrl = serverUrl,
+                            onSave = { value ->
+                                val normalized = value.trim().trimEnd('/')
+                                prefs.edit().putString(PREF_SERVER_URL, normalized).remove(PREF_ACCESS_TOKEN).apply()
+                                serverUrl = normalized
+                                accessToken = ""
+                            },
+                            onLogout = {
+                                prefs.edit().remove(PREF_ACCESS_TOKEN).apply()
+                                accessToken = ""
+                            }
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RowScope.AppNavigationItem(tab: Tab, currentTab: Tab, onSelect: (Tab) -> Unit, icon: androidx.compose.ui.graphics.vector.ImageVector, label: Int, color: Color) {
+    val selected = tab == currentTab
+    NavigationBarItem(
+        selected = selected,
+        onClick = { onSelect(tab) },
+        icon = { Icon(icon, null, tint = color) },
+        label = { NavLabel(label) },
+        colors = NavigationBarItemDefaults.colors(
+            selectedIconColor = color,
+            selectedTextColor = color,
+            unselectedIconColor = color.copy(alpha = 0.72f),
+            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            indicatorColor = color.copy(alpha = 0.16f)
+        )
+    )
+}
+
+@Composable
+private fun DeviceTabRequired(device: RouterDevice?, content: @Composable (RouterDevice) -> Unit) {
+    if (device == null) {
+        Card(Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.select_router_hint), modifier = Modifier.padding(16.dp))
+        }
+    } else {
+        content(device)
     }
 }
 
@@ -201,7 +271,7 @@ private fun FirstRunScreen(onSave: (String) -> Unit) {
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("wrtmonitor", style = MaterialTheme.typography.headlineMedium)
+        Text("WrtMonitor", style = MaterialTheme.typography.headlineMedium)
         Text(stringResource(R.string.first_run_server_prompt))
         OutlinedTextField(
             value = serverUrl,
@@ -232,7 +302,7 @@ private fun LoginScreen(serverUrl: String, onLogin: (String) -> Unit, onChangeSe
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("wrtmonitor", style = MaterialTheme.typography.headlineMedium)
+        Text("WrtMonitor", style = MaterialTheme.typography.headlineMedium)
         Text(serverUrl)
         OutlinedTextField(
             value = username,
@@ -302,7 +372,7 @@ private fun loginAdmin(serverUrl: String, username: String, password: String): S
 }
 
 @Composable
-private fun RoutersScreen(serverUrl: String, accessToken: String, onOpenDevice: (RouterDevice) -> Unit) {
+private fun RoutersScreen(serverUrl: String, accessToken: String, modifier: Modifier = Modifier, onOpenDevice: (RouterDevice) -> Unit) {
     val scope = rememberCoroutineScope()
     var devices by remember { mutableStateOf<List<RouterDevice>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -328,7 +398,7 @@ private fun RoutersScreen(serverUrl: String, accessToken: String, onOpenDevice: 
         refresh()
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.routers), style = MaterialTheme.typography.titleLarge)
             Button(onClick = { refresh() }, enabled = !loading) {
@@ -358,7 +428,7 @@ private fun RoutersScreen(serverUrl: String, accessToken: String, onOpenDevice: 
                 }
             }
             else -> {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(devices, key = { it.id }) { device ->
                         RouterCard(device, onOpenDevice)
                     }
@@ -469,7 +539,7 @@ private fun TelemetryCard(telemetry: DeviceTelemetry) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             InfoRow(stringResource(R.string.updated_at), formatTimestamp(telemetry.createdAt))
-            InfoRow(stringResource(R.string.age), telemetry.ageSeconds?.toString() ?: stringResource(R.string.no_data))
+            InfoRow(stringResource(R.string.age), telemetry.ageSeconds?.let { stringResource(R.string.seconds_value, it) } ?: stringResource(R.string.no_data))
             InfoRow(stringResource(R.string.source), telemetry.source)
             if (telemetry.isStale) {
                 Text(
@@ -481,12 +551,12 @@ private fun TelemetryCard(telemetry: DeviceTelemetry) {
             InfoRow(stringResource(R.string.uptime), formatDuration(system?.optLong("uptime", 0) ?: 0))
             InfoRow(stringResource(R.string.load), system?.optString("load") ?: stringResource(R.string.no_data))
             if (memory != null) {
-                InfoRow(stringResource(R.string.memory), "${memory.optLong("available_kb", 0)} / ${memory.optLong("total_kb", 0)} KB")
+                InfoRow(stringResource(R.string.memory), "${memory.optLong("available_kb", 0) / 1024} / ${memory.optLong("total_kb", 0) / 1024} MB")
             }
             InfoRow(stringResource(R.string.network), if (network != null) stringResource(R.string.available) else stringResource(R.string.no_data))
             InfoRow(stringResource(R.string.wifi), if (wifi?.optBoolean("available", false) == true) stringResource(R.string.available) else stringResource(R.string.no_data))
             WifiRadios(wifi)
-            Button(onClick = { showRaw = !showRaw }) {
+            TextButton(onClick = { showRaw = !showRaw }, modifier = Modifier.align(Alignment.End)) {
                 Text(if (showRaw) stringResource(R.string.hide_raw_telemetry) else stringResource(R.string.show_raw_telemetry))
             }
             if (showRaw) {
@@ -518,7 +588,9 @@ private fun InfoRow(label: String, value: String?) {
             text = label,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.widthIn(min = 88.dp, max = 112.dp)
+            modifier = Modifier.widthIn(min = 76.dp, max = 92.dp),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
         )
         Text(
             text = value?.takeIf { it.isNotBlank() } ?: stringResource(R.string.no_data),
@@ -535,7 +607,7 @@ private fun InfoRow(label: String, value: String?) {
 private fun WifiRadios(wifi: JSONObject?) {
     val radios = wifi?.optJSONArray("radios") ?: JSONArray()
     if (radios.length() == 0) {
-        Text("${stringResource(R.string.wifi_radios)}: ${stringResource(R.string.no_data)}")
+        InfoRow(stringResource(R.string.wifi_radios), stringResource(R.string.no_data))
         return
     }
     Text(stringResource(R.string.wifi_radios), style = MaterialTheme.typography.titleMedium)
@@ -604,6 +676,25 @@ private fun fetchLatestTelemetry(serverUrl: String, accessToken: String, deviceI
     )
 }
 
+private fun sendDeviceCommand(serverUrl: String, accessToken: String, deviceId: String, commandType: String, payload: JSONObject): String {
+    val url = URL("${serverUrl.trim().trimEnd('/')}/api/v1/devices/$deviceId/commands")
+    val connection = (url.openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 10_000
+        readTimeout = 10_000
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json")
+        setRequestProperty("Authorization", "Bearer $accessToken")
+    }
+    val body = JSONObject().put("command_type", commandType).put("payload", payload).toString()
+    connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+    val status = connection.responseCode
+    val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+    val response = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+    if (status !in 200..299) throw IllegalStateException("HTTP $status")
+    return JSONObject(response).optString("status", "queued")
+}
+
 private fun formatTimestamp(value: String?): String {
     if (value.isNullOrBlank()) return ""
     val main = value.substringBefore(".").substringBefore("+").substringBefore("Z")
@@ -633,40 +724,206 @@ private fun formatDuration(seconds: Long): String {
 }
 
 @Composable
-private fun WifiScreen() {
-    var ssid by remember { mutableStateOf("Home Wi-Fi") }
+private fun WifiScreen(serverUrl: String, accessToken: String, device: RouterDevice) {
+    val scope = rememberCoroutineScope()
+    val loadError = stringResource(R.string.load_error)
+    val queuedMessage = stringResource(R.string.command_queued)
+    val commandFailed = stringResource(R.string.command_failed)
+    var telemetry by remember(device.id) { mutableStateOf<DeviceTelemetry?>(null) }
+    var ssid by remember(device.id) { mutableStateOf("") }
+    var enabled by remember(device.id) { mutableStateOf(false) }
+    var loading by remember(device.id) { mutableStateOf(true) }
+    var message by remember(device.id) { mutableStateOf("") }
+
+    fun refresh() {
+        loading = true
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { fetchLatestTelemetry(serverUrl, accessToken, device.id) } }
+                .onSuccess { snapshot ->
+                    telemetry = snapshot
+                    val radio = snapshot.payload?.optJSONObject("wifi")?.optJSONArray("radios")?.optJSONObject(0)
+                    if (ssid.isBlank()) ssid = radio?.optJSONArray("ssid")?.optString(0).orEmpty()
+                    enabled = radio?.optBoolean("up", false) ?: false
+                    loading = false
+                }
+                .onFailure {
+                    message = it.message ?: loadError
+                    loading = false
+                }
+        }
+    }
+
+    fun queue(type: String, payload: JSONObject) {
+        message = ""
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { sendDeviceCommand(serverUrl, accessToken, device.id, type, payload) } }
+                .onSuccess { message = queuedMessage }
+                .onFailure { message = it.message ?: commandFailed }
+        }
+    }
+
+    LaunchedEffect(device.id) { refresh() }
+    val wifi = telemetry?.payload?.optJSONObject("wifi")
+    val available = wifi?.optBoolean("available", false) == true
+
+    Text(stringResource(R.string.wifi), style = MaterialTheme.typography.titleLarge)
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.wifi), style = MaterialTheme.typography.titleLarge)
-            OutlinedTextField(value = ssid, onValueChange = { ssid = it }, label = { Text("SSID") })
-            Button(onClick = { }) { Text(stringResource(R.string.apply)) }
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            InfoRow(stringResource(R.string.router), device.name.ifBlank { device.hostname })
+            InfoRow(stringResource(R.string.status), if (available) stringResource(R.string.available) else stringResource(R.string.wifi_unavailable))
+            if (available) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(stringResource(R.string.wifi_enabled))
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = { value ->
+                            enabled = value
+                            queue("wifi.set_enabled", JSONObject().put("enabled", value))
+                        }
+                    )
+                }
+                OutlinedTextField(
+                    value = ssid,
+                    onValueChange = { ssid = it },
+                    label = { Text("SSID") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Button(
+                    onClick = { queue("wifi.set_ssid", JSONObject().put("ssid", ssid)) },
+                    enabled = ssid.isNotBlank()
+                ) { Text(stringResource(R.string.apply_ssid)) }
+                WifiRadios(wifi)
+            }
+            if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
+            TextButton(onClick = { refresh() }, modifier = Modifier.align(Alignment.End), enabled = !loading) {
+                Text(stringResource(R.string.refresh))
+            }
         }
     }
 }
 
 @Composable
-private fun NetworkScreen() {
+private fun NetworkScreen(serverUrl: String, accessToken: String, device: RouterDevice) {
+    val scope = rememberCoroutineScope()
+    val loadError = stringResource(R.string.load_error)
+    val queuedMessage = stringResource(R.string.command_queued)
+    val commandFailed = stringResource(R.string.command_failed)
+    var telemetry by remember(device.id) { mutableStateOf<DeviceTelemetry?>(null) }
+    var loading by remember(device.id) { mutableStateOf(true) }
+    var message by remember(device.id) { mutableStateOf("") }
+
+    fun refresh() {
+        loading = true
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { fetchLatestTelemetry(serverUrl, accessToken, device.id) } }
+                .onSuccess { telemetry = it; loading = false }
+                .onFailure { message = it.message ?: loadError; loading = false }
+        }
+    }
+
+    fun requestInterfaces() {
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { sendDeviceCommand(serverUrl, accessToken, device.id, "network.interfaces", JSONObject()) } }
+                .onSuccess { message = queuedMessage }
+                .onFailure { message = it.message ?: commandFailed }
+        }
+    }
+
+    LaunchedEffect(device.id) { refresh() }
+    val network = telemetry?.payload?.optJSONObject("network")
+    Text(stringResource(R.string.network), style = MaterialTheme.typography.titleLarge)
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.network), style = MaterialTheme.typography.titleLarge)
-            Text("LAN / WAN")
-            Button(onClick = { }) { Text(stringResource(R.string.apply)) }
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            InfoRow(stringResource(R.string.router), device.name.ifBlank { device.hostname })
+            InfoRow(stringResource(R.string.status), if (network != null) stringResource(R.string.available) else stringResource(R.string.no_data))
+            NetworkInterfaces(network)
+            if (network == null && !loading) {
+                Text(stringResource(R.string.network_no_details), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { requestInterfaces() }) { Text(stringResource(R.string.request_interfaces)) }
+                TextButton(onClick = { refresh() }, enabled = !loading) { Text(stringResource(R.string.refresh)) }
+            }
         }
     }
 }
 
 @Composable
-private fun SystemScreen() {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.system), style = MaterialTheme.typography.titleLarge)
-            Button(onClick = { }) { Text(stringResource(R.string.reboot)) }
-        }
+private fun NetworkInterfaces(network: JSONObject?) {
+    val interfaces = network?.optJSONArray("interface") ?: JSONArray()
+    if (interfaces.length() == 0) return
+    Text(stringResource(R.string.network_interfaces), style = MaterialTheme.typography.titleSmall)
+    for (index in 0 until minOf(interfaces.length(), 8)) {
+        val item = interfaces.optJSONObject(index) ?: continue
+        val name = item.optString("interface", "interface$index")
+        val state = if (item.optBoolean("up", false)) stringResource(R.string.online) else stringResource(R.string.offline)
+        val device = item.optString("l3_device").ifBlank { item.optString("device") }
+        InfoRow(name, listOf(state, device).filter { it.isNotBlank() }.joinToString(" • "))
     }
 }
 
 @Composable
-private fun SettingsScreen(currentServerUrl: String, onSave: (String) -> Unit) {
+private fun SystemScreen(serverUrl: String, accessToken: String, device: RouterDevice) {
+    val scope = rememberCoroutineScope()
+    val loadError = stringResource(R.string.load_error)
+    val rebootQueued = stringResource(R.string.reboot_queued)
+    val commandFailed = stringResource(R.string.command_failed)
+    var telemetry by remember(device.id) { mutableStateOf<DeviceTelemetry?>(null) }
+    var loading by remember(device.id) { mutableStateOf(true) }
+    var message by remember(device.id) { mutableStateOf("") }
+    var confirmReboot by remember { mutableStateOf(false) }
+
+    fun refresh() {
+        loading = true
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { fetchLatestTelemetry(serverUrl, accessToken, device.id) } }
+                .onSuccess { telemetry = it; loading = false }
+                .onFailure { message = it.message ?: loadError; loading = false }
+        }
+    }
+
+    fun queueReboot() {
+        confirmReboot = false
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { sendDeviceCommand(serverUrl, accessToken, device.id, "router.reboot", JSONObject()) } }
+                .onSuccess { message = rebootQueued }
+                .onFailure { message = it.message ?: commandFailed }
+        }
+    }
+
+    LaunchedEffect(device.id) { refresh() }
+    val system = telemetry?.payload?.optJSONObject("system")
+    val board = telemetry?.payload?.optJSONObject("board")
+    Text(stringResource(R.string.system), style = MaterialTheme.typography.titleLarge)
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            InfoRow(stringResource(R.string.router), device.name.ifBlank { device.hostname })
+            InfoRow(stringResource(R.string.uptime), formatDuration(system?.optLong("uptime", 0) ?: 0))
+            InfoRow(stringResource(R.string.load), system?.optString("load"))
+            InfoRow(stringResource(R.string.model), (board?.optString("model") ?: device.model).ifBlank { device.model })
+            InfoRow(stringResource(R.string.firmware), (board?.optString("release") ?: "").ifBlank { shortFirmware(device.firmware) })
+            if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { confirmReboot = true }) { Text(stringResource(R.string.reboot)) }
+                TextButton(onClick = { refresh() }, enabled = !loading) { Text(stringResource(R.string.refresh)) }
+            }
+        }
+    }
+    if (confirmReboot) {
+        AlertDialog(
+            onDismissRequest = { confirmReboot = false },
+            title = { Text(stringResource(R.string.reboot_confirm_title)) },
+            text = { Text(stringResource(R.string.reboot_confirm_message)) },
+            confirmButton = { TextButton(onClick = { queueReboot() }) { Text(stringResource(R.string.reboot)) } },
+            dismissButton = { TextButton(onClick = { confirmReboot = false }) { Text(stringResource(R.string.cancel)) } }
+        )
+    }
+}
+
+@Composable
+private fun SettingsScreen(currentServerUrl: String, onSave: (String) -> Unit, onLogout: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var serverUrl by remember(currentServerUrl) { mutableStateOf(currentServerUrl) }
@@ -706,6 +963,7 @@ private fun SettingsScreen(currentServerUrl: String, onSave: (String) -> Unit) {
         singleLine = true
     )
     Button(onClick = { onSave(serverUrl) }) { Text(stringResource(R.string.save)) }
+    TextButton(onClick = onLogout) { Text(stringResource(R.string.logout)) }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.about_app), style = MaterialTheme.typography.titleMedium)
@@ -736,6 +994,7 @@ private fun AboutAppScreen(
     onCheckUpdates: () -> Unit,
     onOpenRelease: (String) -> Unit
 ) {
+    BackHandler(onBack = onBack)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {

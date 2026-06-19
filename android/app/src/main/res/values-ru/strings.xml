@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">wrtmonitor</string>
+    <string name="app_name">WrtMonitor</string>
     <string name="routers">Роутеры</string>
     <string name="nav_routers">Роутер</string>
     <string name="wifi">Wi-Fi</string>
@@ -40,6 +40,22 @@
     <string name="wifi_radios">Wi-Fi модули</string>
     <string name="show_raw_telemetry">Показать raw telemetry</string>
     <string name="hide_raw_telemetry">Скрыть raw telemetry</string>
+    <string name="seconds_value">%1$d сек</string>
+    <string name="select_router_hint">Сначала откройте карточку нужного роутера.</string>
+    <string name="wifi_unavailable">Wi-Fi модуль не обнаружен</string>
+    <string name="wifi_enabled">Wi-Fi включён</string>
+    <string name="apply_ssid">Применить SSID</string>
+    <string name="command_queued">Команда поставлена в очередь. Роутер выполнит её при следующей проверке связи.</string>
+    <string name="command_failed">Не удалось поставить команду в очередь.</string>
+    <string name="network_no_details">Агент ещё не передал подробные данные сети.</string>
+    <string name="network_interfaces">Интерфейсы</string>
+    <string name="offline">Не в сети</string>
+    <string name="request_interfaces">Запросить интерфейсы</string>
+    <string name="reboot_queued">Команда на перезагрузку поставлена в очередь.</string>
+    <string name="reboot_confirm_title">Перезагрузить роутер?</string>
+    <string name="reboot_confirm_message">Подключение к интернету через этот роутер будет прервано на несколько минут.</string>
+    <string name="cancel">Отмена</string>
+    <string name="logout">Выйти из аккаунта</string>
     <string name="about_app">О приложении</string>
     <string name="about_app_summary">Версия, сведения о проекте и обновления</string>
     <string name="app_version">Версия</string>

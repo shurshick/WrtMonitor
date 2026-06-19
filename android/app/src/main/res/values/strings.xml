@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">wrtmonitor</string>
+    <string name="app_name">WrtMonitor</string>
     <string name="routers">Routers</string>
     <string name="nav_routers">Router</string>
     <string name="wifi">Wi-Fi</string>
@@ -40,6 +40,22 @@
     <string name="wifi_radios">Wi-Fi radios</string>
     <string name="show_raw_telemetry">Show raw telemetry</string>
     <string name="hide_raw_telemetry">Hide raw telemetry</string>
+    <string name="seconds_value">%1$d sec</string>
+    <string name="select_router_hint">Open a router card first to use this section.</string>
+    <string name="wifi_unavailable">No Wi-Fi radio detected</string>
+    <string name="wifi_enabled">Wi-Fi enabled</string>
+    <string name="apply_ssid">Apply SSID</string>
+    <string name="command_queued">Command queued. The router will apply it on the next check-in.</string>
+    <string name="command_failed">Could not queue the command.</string>
+    <string name="network_no_details">The agent has not sent network details yet.</string>
+    <string name="network_interfaces">Interfaces</string>
+    <string name="offline">Offline</string>
+    <string name="request_interfaces">Request interfaces</string>
+    <string name="reboot_queued">Reboot command queued.</string>
+    <string name="reboot_confirm_title">Reboot router?</string>
+    <string name="reboot_confirm_message">The Internet connection through this router will be interrupted for a few minutes.</string>
+    <string name="cancel">Cancel</string>
+    <string name="logout">Sign out</string>
     <string name="about_app">About app</string>
     <string name="about_app_summary">Version, project details and updates</string>
     <string name="app_version">Version</string>

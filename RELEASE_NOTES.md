@@ -1,5 +1,27 @@
 # Release Notes
 
+## v0.1.0-test.14 — Android device control flow
+
+Обновлён основной Android-интерфейс:
+
+- нижняя навигация переключает экраны и внутри выбранного устройства;
+- системная кнопка «Назад» и edge-swipe возвращают из устройства к списку роутеров;
+- шапка использует `WrtMonitor` и launcher icon;
+- иконки нижней навигации получили отдельные цвета;
+- telemetry прокручивается, данные памяти показаны в MB, raw telemetry больше не выглядит как пустая фиолетовая полоса;
+- Wi-Fi показывает состояние radio, умеет поставить в очередь включение/выключение и изменение SSID;
+- Сеть показывает интерфейсы из telemetry и запрашивает обновление интерфейсов через агента;
+- Система показывает uptime, load, модель, прошивку, обновляет telemetry и отправляет reboot с подтверждением;
+- в настройках добавлен рабочий выход из учётной записи.
+
+Артефакты:
+
+- Docker image: `ghcr.io/shurshick/wrtmonitor:0.1.0-test.14`;
+- TrueNAS YAML: `wrtmonitor-truenas-v0.1.0-test.14.yaml`;
+- Android APK: `wrtmonitor-android-v0.1.0-test.14-debug.apk`;
+- OpenWrt agent: `wrtmonitor-openwrt-agent-v0.1.0-test.14.tar.gz`;
+- checksums: `SHA256SUMS.txt`.
+
 ## v0.1.0-test.13 — About app and update check
 
 В Android-раздел настроек добавлен экран «О приложении»:

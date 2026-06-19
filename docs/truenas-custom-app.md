@@ -7,7 +7,7 @@
 ## Актуальная версия
 
 ```text
-v0.1.0-test.13
+v0.1.0-test.14
 ```
 
 ## Файл YAML
@@ -15,7 +15,7 @@ v0.1.0-test.13
 Скачайте из релиза:
 
 ```text
-wrtmonitor-truenas-v0.1.0-test.13.yaml
+wrtmonitor-truenas-v0.1.0-test.14.yaml
 ```
 
 ## Что заменить перед запуском
@@ -40,4 +40,4 @@ WRTMONITOR_JWT_SECRET: replace-with-long-random-jwt-secret
 
 ## Обновление
 
-PostgreSQL volume удалять не нужно. Обновите image tag/YAML до `0.1.0-test.13`, проверьте секреты и перезапустите приложение.
+PostgreSQL volume удалять не нужно. Обновите image tag/YAML до `0.1.0-test.14`, проверьте секреты и перезапустите приложение.
