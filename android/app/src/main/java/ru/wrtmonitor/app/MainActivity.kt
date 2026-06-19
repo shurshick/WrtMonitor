@@ -1,6 +1,8 @@
 package ru.wrtmonitor.app
 
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
@@ -72,6 +74,8 @@ private enum class Tab {
 private const val PREFS_NAME = "wrtmonitor"
 private const val PREF_SERVER_URL = "server_url"
 private const val PREF_ACCESS_TOKEN = "access_token"
+private const val PROJECT_URL = "https://github.com/shurshick/wrtmonitor"
+private const val LATEST_RELEASE_URL = "https://api.github.com/repos/shurshick/wrtmonitor/releases/latest"
 
 private data class RouterDevice(
     val id: String,
@@ -663,7 +667,36 @@ private fun SystemScreen() {
 
 @Composable
 private fun SettingsScreen(currentServerUrl: String, onSave: (String) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var serverUrl by remember(currentServerUrl) { mutableStateOf(currentServerUrl) }
+    var showAbout by remember { mutableStateOf(false) }
+    var updateState by remember { mutableStateOf<UpdateState?>(null) }
+    var checkingUpdate by remember { mutableStateOf(false) }
+
+    if (showAbout) {
+        AboutAppScreen(
+            updateState = updateState,
+            checkingUpdate = checkingUpdate,
+            onBack = { showAbout = false },
+            onOpenProject = { openUrl(context, PROJECT_URL) },
+            onCheckUpdates = {
+                checkingUpdate = true
+                updateState = null
+                scope.launch {
+                    updateState = runCatching {
+                        withContext(Dispatchers.IO) {
+                            checkForUpdate(appVersionName(context))
+                        }
+                    }.getOrElse { UpdateState.Error }
+                    checkingUpdate = false
+                }
+            },
+            onOpenRelease = { url -> openUrl(context, url) }
+        )
+        return
+    }
+
     Text(stringResource(R.string.settings), style = MaterialTheme.typography.titleLarge)
     OutlinedTextField(
         value = serverUrl,
@@ -673,5 +706,139 @@ private fun SettingsScreen(currentServerUrl: String, onSave: (String) -> Unit) {
         singleLine = true
     )
     Button(onClick = { onSave(serverUrl) }) { Text(stringResource(R.string.save)) }
-    Button(onClick = { }) { Text(stringResource(R.string.login)) }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.about_app), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.about_app_summary),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Button(onClick = { showAbout = true }, modifier = Modifier.align(Alignment.End)) {
+                Text(stringResource(R.string.open))
+            }
+        }
+    }
+}
+
+private sealed interface UpdateState {
+    data class UpToDate(val latestVersion: String) : UpdateState
+    data class Available(val latestVersion: String, val releaseUrl: String) : UpdateState
+    data object Error : UpdateState
+}
+
+@Composable
+private fun AboutAppScreen(
+    updateState: UpdateState?,
+    checkingUpdate: Boolean,
+    onBack: () -> Unit,
+    onOpenProject: () -> Unit,
+    onCheckUpdates: () -> Unit,
+    onOpenRelease: (String) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+            }
+            Text(stringResource(R.string.about_app), style = MaterialTheme.typography.titleLarge)
+        }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("wrtmonitor", style = MaterialTheme.typography.titleLarge)
+                InfoRow(stringResource(R.string.app_version), appVersionName(LocalContext.current))
+                Text(
+                    stringResource(R.string.copyright),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Button(onClick = onOpenProject, modifier = Modifier.align(Alignment.End)) {
+                    Text(stringResource(R.string.project_page))
+                }
+            }
+        }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.updates), style = MaterialTheme.typography.titleMedium)
+                when (val state = updateState) {
+                    null -> Text(
+                        stringResource(R.string.update_check_hint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    is UpdateState.UpToDate -> Text(stringResource(R.string.app_up_to_date, state.latestVersion))
+                    is UpdateState.Available -> {
+                        Text(stringResource(R.string.update_available, state.latestVersion))
+                        Button(onClick = { onOpenRelease(state.releaseUrl) }, modifier = Modifier.align(Alignment.End)) {
+                            Text(stringResource(R.string.download_update))
+                        }
+                    }
+                    UpdateState.Error -> Text(
+                        stringResource(R.string.update_check_error),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                Button(onClick = onCheckUpdates, enabled = !checkingUpdate, modifier = Modifier.align(Alignment.End)) {
+                    if (checkingUpdate) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.widthIn(max = 20.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(stringResource(R.string.check_updates))
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun appVersionName(context: android.content.Context): String =
+    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
+
+private fun openUrl(context: android.content.Context, url: String) {
+    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+}
+
+private fun checkForUpdate(currentVersion: String): UpdateState {
+    val connection = (URL(LATEST_RELEASE_URL).openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 10_000
+        readTimeout = 10_000
+        setRequestProperty("Accept", "application/vnd.github+json")
+        setRequestProperty("User-Agent", "wrtmonitor-android")
+    }
+    val status = connection.responseCode
+    val response = if (status in 200..299) {
+        connection.inputStream.bufferedReader().use { it.readText() }
+    } else {
+        ""
+    }
+    if (status !in 200..299) throw IllegalStateException("HTTP $status")
+    val release = JSONObject(response)
+    val latestVersion = release.optString("tag_name").removePrefix("v")
+    val releaseUrl = release.optString("html_url")
+    return if (compareVersions(latestVersion, currentVersion) > 0) {
+        UpdateState.Available(latestVersion, releaseUrl)
+    } else {
+        UpdateState.UpToDate(latestVersion)
+    }
+}
+
+private fun compareVersions(left: String, right: String): Int {
+    val pattern = Regex("""\d+|[A-Za-z]+""")
+    val leftParts = pattern.findAll(left).map { it.value }.toList()
+    val rightParts = pattern.findAll(right).map { it.value }.toList()
+    val maxSize = maxOf(leftParts.size, rightParts.size)
+    for (index in 0 until maxSize) {
+        val leftPart = leftParts.getOrNull(index) ?: "0"
+        val rightPart = rightParts.getOrNull(index) ?: "0"
+        val comparison = when {
+            leftPart.all(Char::isDigit) && rightPart.all(Char::isDigit) ->
+                leftPart.toLong().compareTo(rightPart.toLong())
+            else -> leftPart.compareTo(rightPart, ignoreCase = true)
+        }
+        if (comparison != 0) return comparison
+    }
+    return 0
 }

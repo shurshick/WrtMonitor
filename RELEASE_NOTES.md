@@ -1,5 +1,24 @@
 # Release Notes
 
+## v0.1.0-test.13 — About app and update check
+
+В Android-раздел настроек добавлен экран «О приложении»:
+
+- версия установленного приложения;
+- copyright;
+- ссылка на GitHub-проект;
+- проверка последнего релиза через GitHub API;
+- сообщение об актуальной версии или доступном обновлении;
+- переход на страницу релиза для скачивания APK.
+
+Артефакты:
+
+- Docker image: `ghcr.io/shurshick/wrtmonitor:0.1.0-test.13`;
+- TrueNAS YAML: `wrtmonitor-truenas-v0.1.0-test.13.yaml`;
+- Android APK: `wrtmonitor-android-v0.1.0-test.13-debug.apk`;
+- OpenWrt agent: `wrtmonitor-openwrt-agent-v0.1.0-test.13.tar.gz`;
+- checksums: `SHA256SUMS.txt`.
+
 ## v0.1.0-test.12 — Android icon and update fix
 
 Релиз исправляет тестовую Android-сборку:

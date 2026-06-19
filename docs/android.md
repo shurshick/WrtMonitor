@@ -2,17 +2,17 @@
 
 Android-приложение — основной пользовательский интерфейс `wrtmonitor`.
 
-Текущая версия: `v0.1.0-test.12`.
+Текущая версия: `v0.1.0-test.13`.
 
 ## Установка
 
 1. Откройте релиз:
-   [v0.1.0-test.12](https://github.com/shurshick/wrtmonitor/releases/tag/v0.1.0-test.12)
+   [v0.1.0-test.13](https://github.com/shurshick/wrtmonitor/releases/tag/v0.1.0-test.13)
 
 2. Скачайте APK:
 
    ```text
-   wrtmonitor-android-v0.1.0-test.12-debug.apk
+   wrtmonitor-android-v0.1.0-test.13-debug.apk
    ```
 
 3. Установите APK на Android-устройство.

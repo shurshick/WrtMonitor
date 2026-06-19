@@ -59,13 +59,13 @@ WRTMONITOR_PUBLIC_SERVER_URL=http://server-ip:8088
 В релизе файл называется:
 
 ```text
-wrtmonitor-truenas-v0.1.0-test.12.yaml
+wrtmonitor-truenas-v0.1.0-test.13.yaml
 ```
 
 Образ тестовой версии:
 
 ```text
-ghcr.io/shurshick/wrtmonitor:0.1.0-test.12
+ghcr.io/shurshick/wrtmonitor:0.1.0-test.13
 ```
 
 ## Подключение клиентов
@@ -94,7 +94,7 @@ OpenWrt agent выполняет только команды из allowlist:
 
 ## Статус
 
-Текущая тестовая версия `v0.1.0-test.12` содержит:
+Текущая тестовая версия `v0.1.0-test.13` содержит:
 
 - backend API;
 - PostgreSQL и Alembic-миграции;
