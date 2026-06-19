@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -22,6 +23,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -40,7 +42,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -128,7 +132,7 @@ private fun WrtMonitorApp() {
                     title = { Text(selectedDevice?.name?.ifBlank { selectedDevice?.hostname ?: "wrtmonitor" } ?: "wrtmonitor") },
                     navigationIcon = {
                         if (selectedDevice != null) {
-                            Button(onClick = { selectedDevice = null }) {
+                            IconButton(onClick = { selectedDevice = null }) {
                                 Icon(Icons.Default.ArrowBack, null)
                             }
                         }
@@ -137,11 +141,11 @@ private fun WrtMonitorApp() {
             },
             bottomBar = {
                 NavigationBar {
-                    NavigationBarItem(selected = tab == Tab.Routers, onClick = { tab = Tab.Routers }, icon = { Icon(Icons.Default.Router, null) }, label = { Text(stringResource(R.string.routers)) })
-                    NavigationBarItem(selected = tab == Tab.Wifi, onClick = { tab = Tab.Wifi }, icon = { Icon(Icons.Default.Wifi, null) }, label = { Text(stringResource(R.string.wifi)) })
-                    NavigationBarItem(selected = tab == Tab.Network, onClick = { tab = Tab.Network }, icon = { Icon(Icons.Default.Router, null) }, label = { Text(stringResource(R.string.network)) })
-                    NavigationBarItem(selected = tab == Tab.System, onClick = { tab = Tab.System }, icon = { Icon(Icons.Default.Settings, null) }, label = { Text(stringResource(R.string.system)) })
-                    NavigationBarItem(selected = tab == Tab.Settings, onClick = { tab = Tab.Settings }, icon = { Icon(Icons.Default.Settings, null) }, label = { Text(stringResource(R.string.settings)) })
+                    NavigationBarItem(selected = tab == Tab.Routers, onClick = { tab = Tab.Routers }, icon = { Icon(Icons.Default.Router, null) }, label = { NavLabel(R.string.nav_routers) })
+                    NavigationBarItem(selected = tab == Tab.Wifi, onClick = { tab = Tab.Wifi }, icon = { Icon(Icons.Default.Wifi, null) }, label = { NavLabel(R.string.wifi) })
+                    NavigationBarItem(selected = tab == Tab.Network, onClick = { tab = Tab.Network }, icon = { Icon(Icons.Default.Router, null) }, label = { NavLabel(R.string.network) })
+                    NavigationBarItem(selected = tab == Tab.System, onClick = { tab = Tab.System }, icon = { Icon(Icons.Default.Settings, null) }, label = { NavLabel(R.string.system) })
+                    NavigationBarItem(selected = tab == Tab.Settings, onClick = { tab = Tab.Settings }, icon = { Icon(Icons.Default.Settings, null) }, label = { NavLabel(R.string.nav_settings) })
                 }
             }
         ) { padding ->
@@ -172,6 +176,16 @@ private fun WrtMonitorApp() {
             }
         }
     }
+}
+
+@Composable
+private fun NavLabel(resId: Int) {
+    Text(
+        text = stringResource(resId),
+        style = MaterialTheme.typography.labelSmall,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
 }
 
 @Composable
@@ -353,17 +367,30 @@ private fun RoutersScreen(serverUrl: String, accessToken: String, onOpenDevice: 
 @Composable
 private fun RouterCard(device: RouterDevice, onOpenDevice: (RouterDevice) -> Unit) {
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(device.name.ifBlank { device.hostname.ifBlank { stringResource(R.string.router) } }, style = MaterialTheme.typography.titleMedium)
-            Text("${stringResource(R.string.status)}: ${device.status}")
-            if (device.hostname.isNotBlank()) Text("Hostname: ${device.hostname}")
-            if (device.model.isNotBlank()) Text("${stringResource(R.string.model)}: ${device.model}")
-            if (device.firmware.isNotBlank()) Text("${stringResource(R.string.firmware)}: ${device.firmware}")
-            Text("${stringResource(R.string.last_seen)}: ${device.lastSeenAt ?: stringResource(R.string.no_data)}")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { onOpenDevice(device) }) { Text(stringResource(R.string.open)) }
-                Button(onClick = { }) { Text(stringResource(R.string.reboot)) }
-                Button(onClick = { }) { Text(stringResource(R.string.settings)) }
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        device.name.ifBlank { device.hostname.ifBlank { stringResource(R.string.router) } },
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        device.model.ifBlank { device.hostname.ifBlank { stringResource(R.string.no_data) } },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                StatusText(device.status)
+            }
+            InfoRow(stringResource(R.string.hostname), device.hostname)
+            InfoRow(stringResource(R.string.firmware), shortFirmware(device.firmware))
+            InfoRow(stringResource(R.string.last_seen), formatTimestamp(device.lastSeenAt))
+            Button(onClick = { onOpenDevice(device) }, modifier = Modifier.align(Alignment.End)) {
+                Text(stringResource(R.string.open))
             }
         }
     }
@@ -398,12 +425,20 @@ private fun DeviceScreen(serverUrl: String, accessToken: String, device: RouterD
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(device.name.ifBlank { device.hostname.ifBlank { stringResource(R.string.router) } }, style = MaterialTheme.typography.titleLarge)
-                Text("${stringResource(R.string.status)}: ${device.status}")
-                if (device.model.isNotBlank()) Text("${stringResource(R.string.model)}: ${device.model}")
-                if (device.firmware.isNotBlank()) Text("${stringResource(R.string.firmware)}: ${device.firmware}")
-                Text("${stringResource(R.string.last_seen)}: ${device.lastSeenAt ?: stringResource(R.string.no_data)}")
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                    Text(
+                        device.name.ifBlank { device.hostname.ifBlank { stringResource(R.string.router) } },
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    StatusText(device.status)
+                }
+                InfoRow(stringResource(R.string.model), device.model)
+                InfoRow(stringResource(R.string.firmware), shortFirmware(device.firmware))
+                InfoRow(stringResource(R.string.last_seen), formatTimestamp(device.lastSeenAt))
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -428,28 +463,67 @@ private fun TelemetryCard(telemetry: DeviceTelemetry) {
     val wifi = payload.optJSONObject("wifi")
     val network = payload.optJSONObject("network")
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("${stringResource(R.string.updated_at)}: ${telemetry.createdAt ?: stringResource(R.string.no_data)}")
-            Text("${stringResource(R.string.age)}: ${telemetry.ageSeconds ?: stringResource(R.string.no_data)}")
-            Text("${stringResource(R.string.source)}: ${telemetry.source}")
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            InfoRow(stringResource(R.string.updated_at), formatTimestamp(telemetry.createdAt))
+            InfoRow(stringResource(R.string.age), telemetry.ageSeconds?.toString() ?: stringResource(R.string.no_data))
+            InfoRow(stringResource(R.string.source), telemetry.source)
             if (telemetry.isStale) {
-                Text(stringResource(R.string.stale_telemetry))
+                Text(
+                    stringResource(R.string.stale_telemetry),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
             }
-            Text("${stringResource(R.string.uptime)}: ${system?.optLong("uptime", 0) ?: 0}")
-            Text("${stringResource(R.string.load)}: ${system?.optString("load") ?: stringResource(R.string.no_data)}")
+            InfoRow(stringResource(R.string.uptime), formatDuration(system?.optLong("uptime", 0) ?: 0))
+            InfoRow(stringResource(R.string.load), system?.optString("load") ?: stringResource(R.string.no_data))
             if (memory != null) {
-                Text("${stringResource(R.string.memory)}: ${memory.optLong("available_kb", 0)} / ${memory.optLong("total_kb", 0)} KB")
+                InfoRow(stringResource(R.string.memory), "${memory.optLong("available_kb", 0)} / ${memory.optLong("total_kb", 0)} KB")
             }
-            Text("${stringResource(R.string.network)}: ${network != null}")
-            Text("${stringResource(R.string.wifi)}: ${wifi?.optBoolean("available", false) ?: false}")
+            InfoRow(stringResource(R.string.network), if (network != null) stringResource(R.string.available) else stringResource(R.string.no_data))
+            InfoRow(stringResource(R.string.wifi), if (wifi?.optBoolean("available", false) == true) stringResource(R.string.available) else stringResource(R.string.no_data))
             WifiRadios(wifi)
             Button(onClick = { showRaw = !showRaw }) {
                 Text(if (showRaw) stringResource(R.string.hide_raw_telemetry) else stringResource(R.string.show_raw_telemetry))
             }
             if (showRaw) {
-                Text(payload.toString(2))
+                Text(
+                    payload.toString(2),
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun StatusText(status: String) {
+    Text(
+        text = status.ifBlank { stringResource(R.string.no_data) },
+        style = MaterialTheme.typography.labelMedium,
+        color = if (status.equals("online", ignoreCase = true)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.widthIn(max = 96.dp)
+    )
+}
+
+@Composable
+private fun InfoRow(label: String, value: String?) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.widthIn(min = 88.dp, max = 112.dp)
+        )
+        Text(
+            text = value?.takeIf { it.isNotBlank() } ?: stringResource(R.string.no_data),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Normal,
+            modifier = Modifier.weight(1f),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -524,6 +598,34 @@ private fun fetchLatestTelemetry(serverUrl: String, accessToken: String, deviceI
         source = json.optString("source", "agent"),
         payload = json.optJSONObject("telemetry")
     )
+}
+
+private fun formatTimestamp(value: String?): String {
+    if (value.isNullOrBlank()) return ""
+    val main = value.substringBefore(".").substringBefore("+").substringBefore("Z")
+    val parts = main.split("T")
+    if (parts.size != 2) return value
+    val date = parts[0].split("-")
+    if (date.size != 3) return value
+    val time = parts[1].split(":").take(2).joinToString(":")
+    return "${date[2]}.${date[1]}.${date[0]} $time UTC"
+}
+
+private fun shortFirmware(value: String): String {
+    if (value.isBlank()) return ""
+    return value.replace(Regex("\\s+r\\d+-[0-9a-fA-F]+"), "")
+}
+
+private fun formatDuration(seconds: Long): String {
+    if (seconds <= 0) return "0"
+    val days = seconds / 86_400
+    val hours = (seconds % 86_400) / 3_600
+    val minutes = (seconds % 3_600) / 60
+    return when {
+        days > 0 -> "${days}d ${hours}h"
+        hours > 0 -> "${hours}h ${minutes}m"
+        else -> "${minutes}m"
+    }
 }
 
 @Composable

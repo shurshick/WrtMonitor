@@ -1,10 +1,12 @@
 <resources>
     <string name="app_name">wrtmonitor</string>
     <string name="routers">Роутеры</string>
+    <string name="nav_routers">Роутер</string>
     <string name="wifi">Wi-Fi</string>
     <string name="network">Сеть</string>
     <string name="system">Система</string>
     <string name="settings">Настройки</string>
+    <string name="nav_settings">Ещё</string>
     <string name="server_url">Адрес сервера</string>
     <string name="first_run_server_prompt">Введите адрес сервера wrtmonitor, чтобы подключить приложение.</string>
     <string name="admin_username">Имя администратора</string>
@@ -21,9 +23,11 @@
     <string name="router">Роутер</string>
     <string name="status">Статус</string>
     <string name="model">Модель</string>
+    <string name="hostname">Hostname</string>
     <string name="firmware">Прошивка</string>
     <string name="last_seen">Последняя связь</string>
     <string name="no_data">Нет данных</string>
+    <string name="available">Доступно</string>
     <string name="open">Открыть</string>
     <string name="telemetry">Телеметрия</string>
     <string name="updated_at">Обновлено</string>

@@ -1,10 +1,12 @@
 <resources>
     <string name="app_name">wrtmonitor</string>
     <string name="routers">Routers</string>
+    <string name="nav_routers">Router</string>
     <string name="wifi">Wi-Fi</string>
     <string name="network">Network</string>
     <string name="system">System</string>
     <string name="settings">Settings</string>
+    <string name="nav_settings">More</string>
     <string name="server_url">Server URL</string>
     <string name="first_run_server_prompt">Enter the wrtmonitor server address to connect this app.</string>
     <string name="admin_username">Administrator username</string>
@@ -21,9 +23,11 @@
     <string name="router">Router</string>
     <string name="status">Status</string>
     <string name="model">Model</string>
+    <string name="hostname">Hostname</string>
     <string name="firmware">Firmware</string>
     <string name="last_seen">Last seen</string>
     <string name="no_data">No data</string>
+    <string name="available">Available</string>
     <string name="open">Open</string>
     <string name="telemetry">Telemetry</string>
     <string name="updated_at">Updated</string>
