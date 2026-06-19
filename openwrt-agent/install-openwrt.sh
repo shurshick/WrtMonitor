@@ -110,8 +110,10 @@ if [ -z "$DEVICE_TOKEN" ]; then
   [ -n "$DEVICE_TOKEN" ] || { echo "Failed to receive device token" >&2; exit 1; }
 fi
 
-install -m 0755 wrtmonitor-agent /usr/bin/wrtmonitor-agent
-install -m 0755 wrtmonitor.init /etc/init.d/wrtmonitor
+cp wrtmonitor-agent /usr/bin/wrtmonitor-agent
+chmod 0755 /usr/bin/wrtmonitor-agent
+cp wrtmonitor.init /etc/init.d/wrtmonitor
+chmod 0755 /etc/init.d/wrtmonitor
 
 uci -q batch <<EOF
 set wrtmonitor.main=wrtmonitor
