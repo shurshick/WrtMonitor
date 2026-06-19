@@ -66,9 +66,16 @@ telemetry() {
 }
 
 wifi_status_json() {
-  status="$(wifi status 2>/dev/null | tr '\n' ' ' || true)"
-  status="$(json_escape "$status")"
-  printf '{"raw":"%s"}' "$status"
+  if wifi status >/tmp/wrtmonitor-wifi-status 2>/dev/null; then
+    if grep -q '"up": true' /tmp/wrtmonitor-wifi-status 2>/dev/null; then
+      printf '{"available":true,"up":true}'
+    else
+      printf '{"available":true,"up":false}'
+    fi
+  else
+    printf '{"available":false}'
+  fi
+  rm -f /tmp/wrtmonitor-wifi-status
 }
 
 poll_commands() {
