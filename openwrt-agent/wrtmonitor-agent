@@ -3,6 +3,7 @@ set -eu
 
 CONFIG="wrtmonitor.main"
 LOCK_DIR="/tmp/wrtmonitor-agent.lock"
+AGENT_VERSION="0.1.1-rc1"
 
 cfg() {
   uci -q get "$CONFIG.$1" 2>/dev/null || true
@@ -66,6 +67,27 @@ debug_api() {
   printf 'http_status=%s\n' "$status"
   printf 'response='; cat "$response_file" 2>/dev/null || true; printf '\n'
   rm -f "$response_file"
+}
+
+support_bundle() {
+  public_mode="${1:-}"
+  bundle_dir="/tmp/wrtmonitor-agent-support-$$"
+  archive="/tmp/wrtmonitor-agent-support.tar.gz"
+  mkdir -p "$bundle_dir"
+  printf 'agent_version=%s\n' "$AGENT_VERSION" >"$bundle_dir/version.txt"
+  cat /etc/openwrt_release 2>/dev/null >>"$bundle_dir/version.txt" || true
+  uci show wrtmonitor 2>/dev/null | sed -E "s/(device_token=).*/\1'***'/" >"$bundle_dir/wrtmonitor.conf" || true
+  uci show wireless 2>/dev/null | sed -E "s/(key|password)=.*/\1='***'/" >"$bundle_dir/wireless.conf" || true
+  uci show network 2>/dev/null | sed -E "s/(password|key)=.*/\1='***'/" >"$bundle_dir/network.conf" || true
+  logread 2>/dev/null | grep -i wrtmonitor | tail -100 >"$bundle_dir/wrtmonitor.log" || true
+  debug_api >"$bundle_dir/debug-api.txt" 2>&1 || true
+  debug_telemetry >"$bundle_dir/debug-telemetry.txt" 2>&1 || true
+  if [ "$public_mode" = "--public" ]; then
+    sed -i -E 's/[0-9a-fA-F-]{16,}/***DEVICE***/g; s#https?://[^ /]+#https://***SERVER***#g; s/ssid=.*/ssid='"'"'***'"'"'/g' "$bundle_dir"/* 2>/dev/null || true
+  fi
+  tar -czf "$archive" -C "$bundle_dir" .
+  rm -rf "$bundle_dir"
+  printf '%s\n' "$archive"
 }
 
 json_escape() {
@@ -312,5 +334,7 @@ case "${1:-}" in
   debug) debug ;;
   debug-telemetry) debug_telemetry ;;
   debug-api) debug_api ;;
-  *) echo "Usage: wrtmonitor-agent register|send-now|daemon|debug|debug-telemetry|debug-api" >&2; exit 1 ;;
+  version) printf '%s\n' "$AGENT_VERSION" ;;
+  support-bundle) support_bundle "${2:-}" ;;
+  *) echo "Usage: wrtmonitor-agent register|send-now|daemon|debug|debug-telemetry|debug-api|version|support-bundle [--public]" >&2; exit 1 ;;
 esac

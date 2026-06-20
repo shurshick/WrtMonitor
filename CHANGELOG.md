@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.1-rc1 — Real Router Validation and Control Polish
+
+- Добавлены API истории команд, agent version и support bundle.
+- Добавлен чек-лист валидации на реальном OpenWrt-роутере.
+
 ## v0.1.0-test.17 — Web UI CSP hotfix
 
 - Исправлен внешний вид Web UI после внедрения CSP: inline CSS перенесён в `/static/app.css`.

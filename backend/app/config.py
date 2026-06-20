@@ -5,7 +5,7 @@ from urllib.parse import unquote, urlparse
 
 
 APP_NAME = "wrtmonitor"
-APP_VERSION = "0.1.0-test.17"
+APP_VERSION = "0.1.1-rc1"
 
 
 @dataclass(frozen=True)

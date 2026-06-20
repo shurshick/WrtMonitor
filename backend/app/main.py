@@ -596,6 +596,24 @@ def create_command(device_id: UUID, payload: CommandCreateRequest, user: User = 
     return {"command_id": str(command.id), "status": command.status}
 
 
+@app.get("/api/v1/devices/{device_id}/commands")
+def list_device_commands(device_id: UUID, limit: int = 20, status: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    get_user_device_or_404(db, user, device_id)
+    expire_old_commands(db)
+    query = select(DeviceCommand).where(DeviceCommand.device_id == device_id)
+    if status:
+        query = query.where(DeviceCommand.status == status)
+    commands = db.scalars(query.order_by(DeviceCommand.created_at.desc()).limit(min(max(limit, 1), 100))).all()
+    db.commit()
+    def iso(value):
+        return value.isoformat() if value else None
+    return [{"id": str(command.id), "command_type": command.command_type, "status": command.status,
+             "source": command.source, "payload": command.payload, "result": command.result,
+             "created_at": iso(command.created_at), "picked_at": iso(command.picked_at),
+             "completed_at": iso(command.completed_at), "expires_at": iso(command.expires_at),
+             "last_error": command.last_error} for command in commands]
+
+
 @app.get("/api/v1/agent/commands")
 def poll_commands(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     device = device_from_token(authorization, db)
