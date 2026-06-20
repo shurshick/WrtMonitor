@@ -1,7 +1,5 @@
 {% extends "base.html" %}
+{% block page_class %}page--narrow{% endblock %}
 {% block content %}
-<h1>{{ app_name }}</h1>
-<p>Сервер работает. Версия: {{ version }}</p>
-{% if authenticated %}<p><a href="/devices">Устройства</a></p>{% else %}<p><a href="/login">Войти</a></p>{% endif %}
-{% if api_docs_enabled %}<p><a href="/docs">API</a></p>{% endif %}
+<section class="card card--form"><p class="eyebrow">Self-hosted OpenWrt</p><h1>{{ app_name }}</h1><p class="page-heading__description">Сервер работает. Версия: {{ version }}</p><div class="toolbar section">{% if authenticated %}<a class="button" href="/devices">Устройства</a>{% else %}<a class="button" href="/login">Войти</a>{% endif %}{% if api_docs_enabled %}<a class="button button--secondary" href="/docs">API</a>{% endif %}</div></section>
 {% endblock %}

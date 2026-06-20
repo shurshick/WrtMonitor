@@ -1,15 +1,28 @@
 {% extends "base.html" %}
-{% block title %}WrtMonitor - {{ device.name or device.hostname or 'роутер' }}{% endblock %}
+{% block title %}WrtMonitor - {{ device.name or device.hostname or 'Роутер' }}{% endblock %}
 {% block content %}
-<p><a href="/devices">&larr; Устройства</a></p>
-<h1>{{ device.name or device.hostname or 'Роутер' }}</h1>
-<p>{{ device.model or '' }} · {{ device.firmware or '' }} · <strong>{{ device.status }}</strong></p>
+<a class="back-link" href="/devices">&larr; Устройства</a>
+<div class="page-heading">
+  <div>
+    <h1>{{ device.name or device.hostname or 'Роутер' }}</h1>
+    <p class="device-meta">{{ device.model or 'Модель не определена' }}<span class="device-meta__separator">·</span>{{ device.firmware or 'Прошивка не определена' }}</p>
+  </div>
+  <div class="toolbar__actions">
+    <span class="status status--{{ device.status|lower }}">{{ device.status }}</span>
+    <form method="get" action="/devices/{{ device.id }}"><button class="button button--secondary" type="submit">Обновить</button></form>
+  </div>
+</div>
 <div class="grid">
   {% include "partials/telemetry.html" %}
   {% include "partials/wifi.html" %}
   {% include "partials/network.html" %}
   {% include "partials/system.html" %}
 </div>
-{% include "partials/commands.html" %}
-<h2>Raw telemetry</h2><pre>{{ raw_telemetry }}</pre>
+<section class="stack section">
+  {% include "partials/commands.html" %}
+  <div>
+    <h2>Исходная телеметрия</h2>
+    <pre class="raw-telemetry">{{ raw_telemetry }}</pre>
+  </div>
+</section>
 {% endblock %}

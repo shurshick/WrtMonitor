@@ -1,8 +1,21 @@
 {% extends "base.html" %}
-{% block title %}WrtMonitor - устройства{% endblock %}
+{% block title %}WrtMonitor - Устройства{% endblock %}
 {% block content %}
-<div class="bar"><div><h1>WrtMonitor</h1><p>Устройства</p></div><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button>Выйти</button></form></div>
-<table><thead><tr><th>Имя</th><th>Hostname</th><th>Модель</th><th>Прошивка</th><th>Статус</th><th>Последняя связь</th></tr></thead><tbody>
-{% for device in devices %}<tr><td><a href="/devices/{{ device.id }}">{{ device.name or device.hostname or 'Роутер' }}</a></td><td>{{ device.hostname or '' }}</td><td>{{ device.model or '' }}</td><td>{{ device.firmware or '' }}</td><td>{{ device.status }}</td><td>{{ device.last_seen_at or 'нет данных' }}</td></tr>{% else %}<tr><td colspan="6">Роутеры пока не подключены</td></tr>{% endfor %}
-</tbody></table>
+<div class="page-heading">
+  <div><p class="eyebrow">Сервер WrtMonitor</p><h1>Устройства</h1><p class="page-heading__description">Подключённые OpenWrt-роутеры и их последнее состояние.</p></div>
+  <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button--secondary" type="submit">Выйти</button></form>
+</div>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Устройство</th><th>Hostname</th><th>Модель</th><th>Прошивка</th><th>Статус</th><th>Последняя связь</th></tr></thead>
+    <tbody>{% for device in devices %}
+      <tr>
+        <td><a href="/devices/{{ device.id }}">{{ device.name or device.hostname or 'Роутер' }}</a></td>
+        <td>{{ device.hostname or '—' }}</td><td>{{ device.model or '—' }}</td><td>{{ device.firmware or '—' }}</td>
+        <td><span class="status status--{{ device.status|lower }}">{{ device.status }}</span></td>
+        <td>{{ device.last_seen_at or 'нет данных' }}</td>
+      </tr>
+    {% else %}<tr><td class="empty-state" colspan="6">Роутеры пока не подключены</td></tr>{% endfor %}</tbody>
+  </table>
+</div>
 {% endblock %}

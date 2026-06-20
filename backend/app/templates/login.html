@@ -1,11 +1,9 @@
 {% extends "base.html" %}
-{% block title %}WrtMonitor - вход{% endblock %}
+{% block title %}WrtMonitor - Вход{% endblock %}
+{% block page_class %}page--narrow{% endblock %}
 {% block content %}
-<h1>Вход в WrtMonitor</h1>
+<section class="card card--form"><p class="eyebrow">WrtMonitor</p><h1>Вход в сервер</h1><p class="page-heading__description">Используйте учётную запись администратора.</p>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
-<form method="post" action="/login">
-  <p><input name="username" placeholder="Администратор" required></p>
-  <p><input name="password" type="password" placeholder="Пароль" required></p>
-  <p><button type="submit">Войти</button></p>
-</form>
+<form class="form-stack" method="post" action="/login"><label>Администратор<input name="username" autocomplete="username" required></label><label>Пароль<input name="password" type="password" autocomplete="current-password" required></label><button type="submit">Войти</button></form>
+</section>
 {% endblock %}
