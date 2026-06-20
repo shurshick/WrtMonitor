@@ -74,6 +74,7 @@ import ru.wrtmonitor.app.ui.components.InfoRow
 import ru.wrtmonitor.app.ui.screens.AdminLoginScreen
 import ru.wrtmonitor.app.ui.screens.ServerSetupScreen
 import ru.wrtmonitor.app.ui.screens.DeviceListScreen
+import ru.wrtmonitor.app.ui.screens.DeviceDetailScreen
 
 private enum class Tab {
     Routers,
@@ -181,7 +182,7 @@ fun WrtMonitorApp() {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     when (tab) {
-                        Tab.Routers -> DeviceScreen(serverUrl, accessToken, device!!)
+                        Tab.Routers -> DeviceDetailScreen(serverUrl, accessToken, device!!)
                         Tab.Wifi -> DeviceTabRequired(device) { WifiScreen(serverUrl, accessToken, it) }
                         Tab.Network -> DeviceTabRequired(device) { NetworkScreen(serverUrl, accessToken, it) }
                         Tab.System -> DeviceTabRequired(device) { SystemScreen(serverUrl, accessToken, it) }
