@@ -31,10 +31,22 @@ app = create_app()
 
 def register_routers() -> None:
     # Import after app creation so decorator-based compatibility routes can attach.
-    from . import routes  # noqa: F401
+    from .web import routes  # noqa: F401
     from .api.health import router as health_router
+    from .api.auth import router as auth_router
+    from .api.setup import router as setup_router
+    from .api.devices import router as devices_router
+    from .api.telemetry import router as telemetry_router
+    from .api.commands import router as commands_router
+    from .api.agent import router as agent_router
 
     app.include_router(health_router)
+    app.include_router(auth_router)
+    app.include_router(setup_router)
+    app.include_router(devices_router)
+    app.include_router(telemetry_router)
+    app.include_router(commands_router)
+    app.include_router(agent_router)
 
 
 register_routers()

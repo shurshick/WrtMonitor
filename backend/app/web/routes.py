@@ -11,16 +11,15 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .app_factory import app
-from .config import APP_NAME, APP_VERSION, Settings, load_settings, validate_server_url
-from .db import check_database, get_db
-from .models import AppSetting, AuditLog, Device, DeviceCommand, DeviceTelemetry, User
-from .security import create_access_token, decode_access_token, hash_password, hash_token, verify_password
-from .schemas import AgentRegisterRequest, CommandCreateRequest, CommandResultRequest, DeviceProvisionRequest, LoginRequest, SetupRequest, TelemetryRequest
-from .services.commands import create_device_command, expire_old_commands
-from .services.devices import get_device_or_404, get_user_device_or_404
-from .services.telemetry import build_telemetry_summary
-from .web.csrf import generate_csrf_token, verify_csrf_token
+from ..app_factory import app
+from ..config import APP_NAME, APP_VERSION, Settings, load_settings, validate_server_url
+from ..db import get_db
+from ..models import AppSetting, AuditLog, Device, DeviceCommand, DeviceTelemetry, User
+from ..security import create_access_token, decode_access_token, hash_password, hash_token, verify_password
+from ..schemas import SetupRequest
+from ..services.commands import create_device_command
+from ..services.devices import get_user_device_or_404
+from .csrf import generate_csrf_token, verify_csrf_token
 
 
 ALLOWED_COMMANDS = {
@@ -275,16 +274,6 @@ def setup_form(username: str = Form(...), password: str = Form(...), password_co
     return response
 
 
-@app.get("/api/v1/setup/status")
-def setup_status(config: Settings = Depends(settings), db: Session = Depends(get_db)) -> dict[str, Any]:
-    return {
-        "setup_required": is_setup_required(db, config),
-        "admin_exists": has_admin(db),
-        "server_url": get_public_server_url(db, config),
-    }
-
-
-@app.post("/api/v1/setup/complete")
 def complete_setup(payload: SetupRequest, config: Settings = Depends(settings), db: Session = Depends(get_db)) -> dict[str, str]:
     if has_admin(db):
         raise HTTPException(status_code=409, detail="Administrator already exists")
@@ -299,170 +288,3 @@ def complete_setup(payload: SetupRequest, config: Settings = Depends(settings), 
     audit(db, user.id, "setup.complete", "server", None, {"server_url": server_url})
     db.commit()
     return {"server_url": server_url}
-
-
-@app.post("/api/v1/auth/login")
-def login(payload: LoginRequest, config: Settings = Depends(settings), db: Session = Depends(get_db)) -> dict[str, str]:
-    if is_setup_required(db, config):
-        raise HTTPException(status_code=403, detail="Setup required")
-    user = db.scalars(select(User).where(User.username == payload.username, User.disabled.is_(False))).first()
-    if not user or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    return {"access_token": create_access_token(user.id, user.role, config), "token_type": "bearer"}
-
-
-@app.get("/api/v1/devices")
-def list_devices(_: User = Depends(current_user), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    return [
-        {
-            "id": str(device.id),
-            "name": device.name,
-            "hostname": device.hostname,
-            "model": device.model,
-            "firmware": device.firmware,
-            "status": device.status,
-            "last_seen_at": device.last_seen_at.isoformat() if device.last_seen_at else None,
-        }
-        for device in db.scalars(select(Device).order_by(Device.created_at.desc())).all()
-    ]
-
-
-@app.get("/api/v1/devices/{device_id}/telemetry/latest")
-def latest_device_telemetry(device_id: UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, Any]:
-    get_user_device_or_404(db, user, device_id)
-    telemetry = db.scalars(
-        select(DeviceTelemetry)
-        .where(DeviceTelemetry.device_id == device_id)
-        .order_by(DeviceTelemetry.created_at.desc())
-        .limit(1)
-    ).first()
-    if not telemetry:
-        return {"device_id": str(device_id), "telemetry": None, "created_at": None, "age_seconds": None, "is_stale": False, "source": "agent", "summary": None}
-    age_seconds = max(0, int((now_utc() - telemetry.created_at).total_seconds()))
-    return {
-        "device_id": str(device_id),
-        "telemetry": telemetry.payload,
-        "created_at": telemetry.created_at.isoformat(),
-        "age_seconds": age_seconds,
-        "is_stale": age_seconds > TELEMETRY_STALE_SECONDS,
-        "source": "agent",
-        "summary": build_telemetry_summary(telemetry.payload),
-    }
-
-
-@app.post("/api/v1/devices/provision")
-def provision_device(payload: DeviceProvisionRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, str]:
-    device_token = secrets.token_urlsafe(32)
-    now = now_utc()
-    device = db.scalars(
-        select(Device)
-        .where(Device.hostname == payload.hostname, Device.name == payload.name, Device.model == payload.model)
-        .order_by(Device.updated_at.desc())
-        .limit(1)
-    ).first()
-    if device:
-        device.firmware = payload.firmware
-        device.token_hash = hash_token(device_token)
-        device.status = "provisioned"
-        device.updated_at = now
-    else:
-        device = Device(
-            id=uuid4(),
-            name=payload.name,
-            hostname=payload.hostname,
-            model=payload.model,
-            firmware=payload.firmware,
-            token_hash=hash_token(device_token),
-            status="provisioned",
-            last_seen_at=None,
-            created_at=now,
-            updated_at=now,
-        )
-        db.add(device)
-    audit(db, user.id, "device.provision", "device", str(device.id), {"hostname": payload.hostname})
-    db.commit()
-    return {"device_id": str(device.id), "device_token": device_token}
-
-
-@app.post("/api/v1/agent/register")
-def register_agent(payload: AgentRegisterRequest, db: Session = Depends(get_db)) -> dict[str, str]:
-    token_digest = hash_token(payload.device_token)
-    existing = db.scalars(select(Device).where(Device.token_hash == token_digest)).first()
-    if existing:
-        return {"device_id": str(existing.id)}
-    raise HTTPException(status_code=401, detail="Unknown device token")
-
-
-@app.post("/api/v1/agent/telemetry")
-def agent_telemetry(payload: TelemetryRequest, authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> dict[str, str]:
-    device = device_from_token(authorization, db)
-    if device.id != payload.device_id:
-        raise HTTPException(status_code=403, detail="Device token mismatch")
-    now = now_utc()
-    device.status = "online"
-    device.last_seen_at = now
-    device.updated_at = now
-    db.add(DeviceTelemetry(id=uuid4(), device_id=device.id, payload=payload.telemetry, created_at=now))
-    db.flush()
-    cleanup_device_telemetry(db, device.id, settings().telemetry_retention_per_device)
-    db.commit()
-    return {"status": "ok"}
-
-
-@app.post("/api/v1/devices/{device_id}/commands")
-def create_command(device_id: UUID, payload: CommandCreateRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, str]:
-    if payload.command_type not in ALLOWED_COMMANDS:
-        raise HTTPException(status_code=400, detail="Command is not allowed")
-    get_user_device_or_404(db, user, device_id)
-    command = create_device_command(db, device_id=device_id, command_type=payload.command_type, payload=payload.payload, created_by=user.id, source="api")
-    audit(db, user.id, "command.create", "device_command", str(command.id), {"command_type": payload.command_type})
-    db.commit()
-    return {"command_id": str(command.id), "status": command.status}
-
-
-@app.get("/api/v1/devices/{device_id}/commands")
-def list_device_commands(device_id: UUID, limit: int = 20, status: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    get_user_device_or_404(db, user, device_id)
-    expire_old_commands(db)
-    query = select(DeviceCommand).where(DeviceCommand.device_id == device_id)
-    if status:
-        query = query.where(DeviceCommand.status == status)
-    commands = db.scalars(query.order_by(DeviceCommand.created_at.desc()).limit(min(max(limit, 1), 100))).all()
-    db.commit()
-    def iso(value):
-        return value.isoformat() if value else None
-    return [{"id": str(command.id), "command_type": command.command_type, "status": command.status,
-             "source": command.source, "payload": command.payload, "result": command.result,
-             "created_at": iso(command.created_at), "picked_at": iso(command.picked_at),
-             "completed_at": iso(command.completed_at), "expires_at": iso(command.expires_at),
-             "last_error": command.last_error} for command in commands]
-
-
-@app.get("/api/v1/agent/commands")
-def poll_commands(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    device = device_from_token(authorization, db)
-    expire_old_commands(db)
-    commands = db.scalars(select(DeviceCommand).where(DeviceCommand.device_id == device.id, DeviceCommand.status == "queued").order_by(DeviceCommand.created_at.asc()).limit(5)).all()
-    for command in commands:
-        command.status = "sent"
-        command.updated_at = now_utc()
-        command.picked_at = now_utc()
-        command.retry_count += 1
-    db.commit()
-    return [{"id": str(command.id), "type": command.command_type, "payload": command.payload} for command in commands]
-
-
-@app.post("/api/v1/agent/commands/{command_id}/result")
-def command_result(command_id: UUID, payload: CommandResultRequest, authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> dict[str, str]:
-    device = device_from_token(authorization, db)
-    command = db.get(DeviceCommand, command_id)
-    if not command or command.device_id != device.id:
-        raise HTTPException(status_code=404, detail="Command not found")
-    command.status = "success" if payload.status in {"done", "success"} else "failed"
-    command.result = payload.result
-    command.updated_at = now_utc()
-    command.completed_at = now_utc()
-    command.last_error = str(payload.result.get("error")) if isinstance(payload.result, dict) and payload.result.get("error") else None
-    audit(db, None, "command.result", "device_command", str(command.id), {"status": command.status})
-    db.commit()
-    return {"status": "ok"}
