@@ -1,5 +1,15 @@
 # Развёртывание серверной части
 
+## Перед первым запуском обязательно замените секреты
+
+Замените все `change-me-*` значения: `POSTGRES_PASSWORD`, пароль в `WRTMONITOR_DATABASE_URL` и `WRTMONITOR_JWT_SECRET`. Для JWT secret используйте, например:
+
+```sh
+openssl rand -base64 32
+```
+
+`WRTMONITOR_PUBLIC_SERVER_URL` должен содержать внешний HTTPS URL сервера. Endpoint `/health/config` проверяет только факт настройки и никогда не возвращает секреты.
+
 Документ актуален для `wrtmonitor v0.1.0-test.15`.
 
 Сервер состоит из двух контейнеров:

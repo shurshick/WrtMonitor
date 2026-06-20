@@ -283,3 +283,16 @@ curl -i https://monitor.example.ru/health
 opkg update
 opkg install jsonfilter
 ```
+## Надёжность и диагностика
+
+Agent не допускает параллельный `send-now` или `daemon`: используется lock `/tmp/wrtmonitor-agent.lock`. Все запросы `curl` имеют connect timeout и общий timeout.
+
+Для диагностики доступны команды:
+
+```sh
+wrtmonitor-agent debug
+wrtmonitor-agent debug-telemetry
+wrtmonitor-agent debug-api
+```
+
+`debug` показывает только маску device token, а не его полное значение.

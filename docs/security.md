@@ -8,6 +8,7 @@
 - OpenWrt agent использует отдельный device token.
 - Device token хранится на сервере только как hash.
 - Web UI `/devices` требует вход через `/login`.
+- Все Web UI POST-формы защищены CSRF-токеном; детали описаны в [security-web-ui.md](security-web-ui.md).
 - API-документация `/docs`, `/redoc`, `/openapi.json` по умолчанию выключена.
 - Команды управления выполняются только через allowlist.
 - Произвольные shell-команды на роутере не поддерживаются.

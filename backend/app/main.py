@@ -17,6 +17,11 @@ from .config import APP_NAME, APP_VERSION, Settings, load_settings, validate_ser
 from .db import check_database, get_db, init_db
 from .models import AppSetting, AuditLog, Device, DeviceCommand, DeviceTelemetry, User
 from .security import create_access_token, decode_access_token, hash_password, hash_token, verify_password
+from .services.commands import create_device_command, expire_old_commands
+from .services.devices import get_device_or_404, get_user_device_or_404
+from .services.telemetry import build_telemetry_summary
+from .web.csrf import generate_csrf_token, verify_csrf_token
+from .web.security_headers import SecurityHeadersMiddleware
 
 
 ALLOWED_COMMANDS = {
@@ -28,7 +33,6 @@ ALLOWED_COMMANDS = {
 }
 
 TELEMETRY_STALE_SECONDS = 5 * 60
-TELEMETRY_RETENTION_PER_DEVICE = 100
 
 
 _startup_settings = load_settings()
@@ -39,6 +43,7 @@ app = FastAPI(
     redoc_url="/redoc" if _startup_settings.enable_api_docs else None,
     openapi_url="/openapi.json" if _startup_settings.enable_api_docs else None,
 )
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 class LoginRequest(BaseModel):
@@ -159,7 +164,7 @@ def audit(db: Session, user_id: UUID | None, action: str, object_type: str | Non
     db.add(AuditLog(id=uuid4(), user_id=user_id, action=action, object_type=object_type, object_id=object_id, details=details, created_at=now_utc()))
 
 
-def cleanup_device_telemetry(db: Session, device_id: UUID, keep: int = TELEMETRY_RETENTION_PER_DEVICE) -> None:
+def cleanup_device_telemetry(db: Session, device_id: UUID, keep: int) -> None:
     old_ids = [
         row[0]
         for row in db.execute(
@@ -177,6 +182,22 @@ def cleanup_device_telemetry(db: Session, device_id: UUID, keep: int = TELEMETRY
 def health() -> dict[str, str]:
     check_database()
     return {"status": "ok", "database": "postgresql"}
+
+
+@app.get("/health/config")
+def health_config(config: Settings = Depends(settings)) -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "database_url_configured": bool(config.database_url),
+        "jwt_secret_configured": bool(config.jwt_secret),
+        "public_server_url_configured": bool(config.public_server_url),
+        "api_docs_enabled": config.enable_api_docs,
+    }
+
+
+def require_web_csrf(session_token: str | None, csrf_token: str, config: Settings) -> None:
+    if not session_token or not verify_csrf_token(session_token, csrf_token, config.jwt_secret):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -238,7 +259,8 @@ def login_form(username: str = Form(...), password: str = Form(...), config: Set
 
 
 @app.post("/logout")
-def logout_form() -> RedirectResponse:
+def logout_form(csrf_token: str = Form(...), config: Settings = Depends(settings), wrtmonitor_session: str | None = Cookie(default=None)) -> RedirectResponse:
+    require_web_csrf(wrtmonitor_session, csrf_token, config)
     response = RedirectResponse("/", status_code=303)
     response.delete_cookie("wrtmonitor_session")
     return response
@@ -251,6 +273,7 @@ def devices_page(config: Settings = Depends(settings), db: Session = Depends(get
     user = web_user_from_session(wrtmonitor_session, config, db)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    csrf_token = generate_csrf_token(wrtmonitor_session or "", config.jwt_secret)
     rows = []
     for device in db.scalars(select(Device).order_by(Device.created_at.desc())).all():
         name = escape(device.name or device.hostname or "Роутер")
@@ -276,7 +299,7 @@ def devices_page(config: Settings = Depends(settings), db: Session = Depends(get
           button {{ border:0; border-radius:6px; padding:8px 12px; background:#5d46b3; color:white; cursor:pointer; }}
           .bar {{ display:flex; align-items:center; justify-content:space-between; gap:16px; }}
         </style></head><body>
-        <div class="bar"><div><h1>WrtMonitor</h1><p>Устройства</p></div><form method="post" action="/logout"><button>Выйти</button></form></div>
+        <div class="bar"><div><h1>WrtMonitor</h1><p>Устройства</p></div><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{csrf_token}"><button>Выйти</button></form></div>
         <table><thead><tr><th>Имя</th><th>Hostname</th><th>Модель</th><th>Прошивка</th><th>Статус</th><th>Последняя связь</th></tr></thead>
         <tbody>{table_body}</tbody></table></body></html>
         """
@@ -290,9 +313,8 @@ def device_page(device_id: UUID, config: Settings = Depends(settings), db: Sessi
     user = web_user_from_session(wrtmonitor_session, config, db)
     if not user:
         return RedirectResponse("/login", status_code=303)
-    device = db.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    device = get_user_device_or_404(db, user, device_id)
+    csrf_token = generate_csrf_token(wrtmonitor_session or "", config.jwt_secret)
     telemetry = db.scalars(
         select(DeviceTelemetry).where(DeviceTelemetry.device_id == device_id).order_by(DeviceTelemetry.created_at.desc()).limit(1)
     ).first()
@@ -348,11 +370,11 @@ def device_page(device_id: UUID, config: Settings = Depends(settings), db: Sessi
             <dt>Память</dt><dd>{escape(str(memory.get('available_kb', '-')))} / {escape(str(memory.get('total_kb', '-')))} KB</dd>
           </dl></section>
           <section class="card"><h2>Wi-Fi</h2><ul>{radio_rows}</ul>
-            <form method="post" action="/devices/{device.id}/web-command"><input type="hidden" name="command_type" value="wifi.set_enabled"><label>Состояние</label><select name="enabled"><option value="true">Включить</option><option value="false">Выключить</option></select><button>Применить</button></form>
-            <form method="post" action="/devices/{device.id}/web-command"><input type="hidden" name="command_type" value="wifi.set_ssid"><label>Новый SSID</label><input name="ssid" required maxlength="64"><button>Изменить SSID</button></form>
+            <form method="post" action="/devices/{device.id}/web-command"><input type="hidden" name="csrf_token" value="{csrf_token}"><input type="hidden" name="command_type" value="wifi.set_enabled"><label>Состояние</label><select name="enabled"><option value="true">Включить</option><option value="false">Выключить</option></select><button>Применить</button></form>
+            <form method="post" action="/devices/{device.id}/web-command"><input type="hidden" name="csrf_token" value="{csrf_token}"><input type="hidden" name="command_type" value="wifi.set_ssid"><label>Новый SSID</label><input name="ssid" required maxlength="64"><button>Изменить SSID</button></form>
           </section>
-          <section class="card"><h2>Сеть</h2><ul>{interface_rows}</ul><form method="post" action="/devices/{device.id}/web-command"><input type="hidden" name="command_type" value="network.interfaces"><button>Запросить интерфейсы</button></form></section>
-          <section class="card"><h2>Система</h2><p>Команда перезагрузки будет выполнена при следующем опросе агента.</p><form method="post" action="/devices/{device.id}/web-command" onsubmit="return confirm('Перезагрузить роутер?')"><input type="hidden" name="command_type" value="router.reboot"><button>Перезагрузить</button></form></section>
+          <section class="card"><h2>Сеть</h2><ul>{interface_rows}</ul><form method="post" action="/devices/{device.id}/web-command"><input type="hidden" name="csrf_token" value="{csrf_token}"><input type="hidden" name="command_type" value="network.interfaces"><button>Запросить интерфейсы</button></form></section>
+          <section class="card"><h2>Система</h2><p>Команда перезагрузки будет выполнена при следующем опросе агента.</p><form method="post" action="/devices/{device.id}/web-command"><input type="hidden" name="csrf_token" value="{csrf_token}"><input type="hidden" name="command_type" value="router.reboot"><button>Перезагрузить</button></form></section>
         </div>
         <h2>Последние команды</h2><table><thead><tr><th>Команда</th><th>Статус</th><th>Обновлено</th><th>Результат</th></tr></thead><tbody>{command_rows}</tbody></table>
         <h2>Raw telemetry</h2><pre>{escape(json.dumps(payload, ensure_ascii=False, indent=2))}</pre>
@@ -367,6 +389,7 @@ def web_device_command(
     command_type: str = Form(...),
     ssid: str = Form(default=""),
     enabled: str = Form(default="true"),
+    csrf_token: str = Form(...),
     config: Settings = Depends(settings),
     db: Session = Depends(get_db),
     wrtmonitor_session: str | None = Cookie(default=None),
@@ -376,7 +399,9 @@ def web_device_command(
     user = web_user_from_session(wrtmonitor_session, config, db)
     if not user:
         return RedirectResponse("/login", status_code=303)
-    if command_type not in ALLOWED_COMMANDS or not db.get(Device, device_id):
+    require_web_csrf(wrtmonitor_session, csrf_token, config)
+    get_user_device_or_404(db, user, device_id)
+    if command_type not in ALLOWED_COMMANDS:
         raise HTTPException(status_code=400, detail="Unsupported command or device")
     payload: dict[str, Any] = {}
     if command_type == "wifi.set_ssid":
@@ -385,22 +410,21 @@ def web_device_command(
         payload["ssid"] = ssid.strip()
     elif command_type == "wifi.set_enabled":
         payload["enabled"] = enabled.lower() == "true"
-    now = now_utc()
-    command = DeviceCommand(id=uuid4(), device_id=device_id, command_type=command_type, payload=payload, status="queued", result=None, created_by=user.id, created_at=now, updated_at=now)
-    db.add(command)
+    command = create_device_command(db, device_id=device_id, command_type=command_type, payload=payload, created_by=user.id, source="web")
     audit(db, user.id, "command.create", "device_command", str(command.id), {"command_type": command_type, "source": "web"})
     db.commit()
     return RedirectResponse(f"/devices/{device_id}", status_code=303)
 
 
 @app.post("/devices/{device_id}/delete")
-def delete_device_page(device_id: UUID, config: Settings = Depends(settings), db: Session = Depends(get_db), wrtmonitor_session: str | None = Cookie(default=None)) -> RedirectResponse:
+def delete_device_page(device_id: UUID, csrf_token: str = Form(...), config: Settings = Depends(settings), db: Session = Depends(get_db), wrtmonitor_session: str | None = Cookie(default=None)) -> RedirectResponse:
     if is_setup_required(db, config):
         return RedirectResponse("/setup", status_code=303)
     user = web_user_from_session(wrtmonitor_session, config, db)
     if not user:
         return RedirectResponse("/login", status_code=303)
-    device = db.get(Device, device_id)
+    require_web_csrf(wrtmonitor_session, csrf_token, config)
+    device = get_user_device_or_404(db, user, device_id)
     if device and device.last_seen_at is None and device.status in {"provisioned", "offline"}:
         db.delete(device)
         db.commit()
@@ -408,14 +432,16 @@ def delete_device_page(device_id: UUID, config: Settings = Depends(settings), db
 
 
 @app.get("/setup", response_class=HTMLResponse)
-def setup_page(config: Settings = Depends(settings), db: Session = Depends(get_db)) -> HTMLResponse:
+def setup_page(config: Settings = Depends(settings), db: Session = Depends(get_db), wrtmonitor_setup_nonce: str | None = Cookie(default=None)) -> HTMLResponse:
     if not is_setup_required(db, config):
         return HTMLResponse("<html><body><h1>wrtmonitor настроен</h1></body></html>")
-    return HTMLResponse(
-        """
+    nonce = wrtmonitor_setup_nonce or secrets.token_urlsafe(24)
+    csrf_token = generate_csrf_token(nonce, config.jwt_secret)
+    response = HTMLResponse(
+        f"""
         <html lang="ru"><body>
           <h1>Первая настройка wrtmonitor</h1>
-          <form method="post" action="/setup">
+          <form method="post" action="/setup"><input type="hidden" name="csrf_token" value="{csrf_token}">
             <p><input name="username" placeholder="Администратор" required minlength="3"></p>
             <p><input name="password" type="password" placeholder="Пароль" required minlength="8"></p>
             <p><input name="password_confirm" type="password" placeholder="Повторите пароль" required minlength="8"></p>
@@ -425,12 +451,18 @@ def setup_page(config: Settings = Depends(settings), db: Session = Depends(get_d
         </body></html>
         """
     )
+    response.set_cookie("wrtmonitor_setup_nonce", nonce, httponly=True, samesite="lax", max_age=15 * 60)
+    return response
 
 
 @app.post("/setup")
-def setup_form(username: str = Form(...), password: str = Form(...), password_confirm: str = Form(...), server_url: str = Form(...), config: Settings = Depends(settings), db: Session = Depends(get_db)):
+def setup_form(username: str = Form(...), password: str = Form(...), password_confirm: str = Form(...), server_url: str = Form(...), csrf_token: str = Form(...), config: Settings = Depends(settings), db: Session = Depends(get_db), wrtmonitor_setup_nonce: str | None = Cookie(default=None)):
+    if not wrtmonitor_setup_nonce or not verify_csrf_token(wrtmonitor_setup_nonce, csrf_token, config.jwt_secret):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
     complete_setup(SetupRequest(username=username, password=password, password_confirm=password_confirm, server_url=server_url), config, db)
-    return RedirectResponse("/", status_code=303)
+    response = RedirectResponse("/", status_code=303)
+    response.delete_cookie("wrtmonitor_setup_nonce")
+    return response
 
 
 @app.get("/api/v1/setup/status")
@@ -486,10 +518,8 @@ def list_devices(_: User = Depends(current_user), db: Session = Depends(get_db))
 
 
 @app.get("/api/v1/devices/{device_id}/telemetry/latest")
-def latest_device_telemetry(device_id: UUID, _: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, Any]:
-    device = db.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+def latest_device_telemetry(device_id: UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, Any]:
+    get_user_device_or_404(db, user, device_id)
     telemetry = db.scalars(
         select(DeviceTelemetry)
         .where(DeviceTelemetry.device_id == device_id)
@@ -497,7 +527,7 @@ def latest_device_telemetry(device_id: UUID, _: User = Depends(current_user), db
         .limit(1)
     ).first()
     if not telemetry:
-        return {"device_id": str(device_id), "telemetry": None, "created_at": None, "age_seconds": None, "is_stale": False, "source": "agent"}
+        return {"device_id": str(device_id), "telemetry": None, "created_at": None, "age_seconds": None, "is_stale": False, "source": "agent", "summary": None}
     age_seconds = max(0, int((now_utc() - telemetry.created_at).total_seconds()))
     return {
         "device_id": str(device_id),
@@ -506,6 +536,7 @@ def latest_device_telemetry(device_id: UUID, _: User = Depends(current_user), db
         "age_seconds": age_seconds,
         "is_stale": age_seconds > TELEMETRY_STALE_SECONDS,
         "source": "agent",
+        "summary": build_telemetry_summary(telemetry.payload),
     }
 
 
@@ -563,7 +594,7 @@ def agent_telemetry(payload: TelemetryRequest, authorization: str | None = Heade
     device.updated_at = now
     db.add(DeviceTelemetry(id=uuid4(), device_id=device.id, payload=payload.telemetry, created_at=now))
     db.flush()
-    cleanup_device_telemetry(db, device.id)
+    cleanup_device_telemetry(db, device.id, settings().telemetry_retention_per_device)
     db.commit()
     return {"status": "ok"}
 
@@ -572,11 +603,8 @@ def agent_telemetry(payload: TelemetryRequest, authorization: str | None = Heade
 def create_command(device_id: UUID, payload: CommandCreateRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, str]:
     if payload.command_type not in ALLOWED_COMMANDS:
         raise HTTPException(status_code=400, detail="Command is not allowed")
-    if not db.get(Device, device_id):
-        raise HTTPException(status_code=404, detail="Device not found")
-    now = now_utc()
-    command = DeviceCommand(id=uuid4(), device_id=device_id, command_type=payload.command_type, payload=payload.payload, status="queued", result=None, created_by=user.id, created_at=now, updated_at=now)
-    db.add(command)
+    get_user_device_or_404(db, user, device_id)
+    command = create_device_command(db, device_id=device_id, command_type=payload.command_type, payload=payload.payload, created_by=user.id, source="api")
     audit(db, user.id, "command.create", "device_command", str(command.id), {"command_type": payload.command_type})
     db.commit()
     return {"command_id": str(command.id), "status": command.status}
@@ -585,10 +613,13 @@ def create_command(device_id: UUID, payload: CommandCreateRequest, user: User = 
 @app.get("/api/v1/agent/commands")
 def poll_commands(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     device = device_from_token(authorization, db)
+    expire_old_commands(db)
     commands = db.scalars(select(DeviceCommand).where(DeviceCommand.device_id == device.id, DeviceCommand.status == "queued").order_by(DeviceCommand.created_at.asc()).limit(5)).all()
     for command in commands:
         command.status = "sent"
         command.updated_at = now_utc()
+        command.picked_at = now_utc()
+        command.retry_count += 1
     db.commit()
     return [{"id": str(command.id), "type": command.command_type, "payload": command.payload} for command in commands]
 
@@ -599,10 +630,12 @@ def command_result(command_id: UUID, payload: CommandResultRequest, authorizatio
     command = db.get(DeviceCommand, command_id)
     if not command or command.device_id != device.id:
         raise HTTPException(status_code=404, detail="Command not found")
-    command.status = payload.status
+    command.status = "success" if payload.status in {"done", "success"} else "failed"
     command.result = payload.result
     command.updated_at = now_utc()
-    audit(db, None, "command.result", "device_command", str(command.id), {"status": payload.status})
+    command.completed_at = now_utc()
+    command.last_error = str(payload.result.get("error")) if isinstance(payload.result, dict) and payload.result.get("error") else None
+    audit(db, None, "command.result", "device_command", str(command.id), {"status": command.status})
     db.commit()
     return {"status": "ok"}
 

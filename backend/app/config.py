@@ -5,7 +5,7 @@ from urllib.parse import unquote, urlparse
 
 
 APP_NAME = "wrtmonitor"
-APP_VERSION = "0.1.0-test.11"
+APP_VERSION = "0.1.0-test.16"
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,7 @@ class Settings:
     allow_insecure_local: bool
     allow_insecure_dev_defaults: bool
     enable_api_docs: bool
+    telemetry_retention_per_device: int = 100
 
 
 def bool_from_env(value: str | None, default: bool = False) -> bool:
@@ -98,5 +99,6 @@ def load_settings() -> Settings:
         allow_insecure_local=allow_insecure_local,
         allow_insecure_dev_defaults=allow_insecure_dev_defaults,
         enable_api_docs=bool_from_env(os.getenv("WRTMONITOR_ENABLE_API_DOCS"), False),
+        telemetry_retention_per_device=max(1, int(os.getenv("WRTMONITOR_TELEMETRY_RETENTION_PER_DEVICE", "100"))),
     )
 

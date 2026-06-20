@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.0-test.16 — Security, Refactor and Command Reliability
+
+- Добавлены CSRF-защита Web UI, security headers и безопасный `/health/config`.
+- Команды получили source, expiry, picked/completed timestamps, retry count и last error.
+- Latest telemetry возвращает нормализованный summary; retention настраивается через environment.
+- OpenWrt-agent получил lock, curl timeouts и диагностические команды с маскированным token.
+- Android `versionCode` повышен до 16.
+
 ## v0.1.0-test.15
 
 - Исправлено Android-падение после первого входа.

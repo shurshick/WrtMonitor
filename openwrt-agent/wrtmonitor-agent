@@ -2,6 +2,7 @@
 set -eu
 
 CONFIG="wrtmonitor.main"
+LOCK_DIR="/tmp/wrtmonitor-agent.lock"
 
 cfg() {
   uci -q get "$CONFIG.$1" 2>/dev/null || true
@@ -17,14 +18,54 @@ api() {
   body="${3:-}"
   [ -n "$body" ] || body="{}"
   if [ "$method" = "GET" ]; then
-    curl -fsS -X "$method" "$(server_url)$path" \
+    curl -fsS --connect-timeout 5 --max-time 15 -X "$method" "$(server_url)$path" \
       -H "Authorization: Bearer $(device_token)"
   else
-    curl -fsS -X "$method" "$(server_url)$path" \
+    curl -fsS --connect-timeout 10 --max-time 30 -X "$method" "$(server_url)$path" \
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer $(device_token)" \
       -d "$body"
   fi
+}
+
+acquire_lock() {
+  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    logger -t wrtmonitor "agent is already running"
+    return 1
+  fi
+  trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
+}
+
+masked_token() {
+  token="$(device_token)"
+  length="${#token}"
+  if [ "$length" -le 10 ]; then
+    printf '%s' 'configured'
+  else
+    printf '%s...%s' "$(printf '%s' "$token" | cut -c1-5)" "$(printf '%s' "$token" | tail -c 5)"
+  fi
+}
+
+debug() {
+  printf 'server_url=%s\n' "$(server_url)"
+  printf 'device_id=%s\n' "$(device_id)"
+  printf 'device_token=%s\n' "$(masked_token)"
+  printf 'interval=%s\n' "$(cfg interval)"
+}
+
+debug_telemetry() {
+  payload="$(telemetry_payload)"
+  printf 'telemetry_bytes=%s\n' "$(printf '%s' "$payload" | wc -c | tr -d ' ')"
+  printf '%s\n' "$payload"
+}
+
+debug_api() {
+  endpoint="$(server_url)/api/v1/agent/commands"
+  response_file="/tmp/wrtmonitor-debug-api-$$"
+  status="$(curl -sS --connect-timeout 5 --max-time 15 -o "$response_file" -w '%{http_code}' -X GET "$endpoint" -H "Authorization: Bearer $(device_token)" || true)"
+  printf 'http_status=%s\n' "$status"
+  printf 'response='; cat "$response_file" 2>/dev/null || true; printf '\n'
+  rm -f "$response_file"
 }
 
 json_escape() {
@@ -120,12 +161,17 @@ register_device() {
 
 telemetry() {
   [ -n "$(device_id)" ] || register_device
+  body="$(telemetry_payload)"
+  api POST /api/v1/agent/telemetry "$body" >/dev/null
+}
+
+telemetry_payload() {
+  [ -n "$(device_id)" ] || register_device
   uptime_value="$(cut -d. -f1 /proc/uptime 2>/dev/null || echo 0)"
   load_value="$(cut -d' ' -f1 /proc/loadavg 2>/dev/null || echo 0)"
   case "$uptime_value" in ""|*[!0-9]*) uptime_value="0" ;; esac
   load_value="$(json_escape "$load_value")"
-  body="{\"device_id\":\"$(device_id)\",\"telemetry\":{\"system\":{\"uptime\":$uptime_value,\"load\":\"$load_value\",\"memory\":$(memory_json),\"ubus\":$(ubus_json system info)},\"board\":$(ubus_json system board),\"network\":$(ubus_json network.interface dump),\"wifi\":$(wifi_status_json)}}"
-  api POST /api/v1/agent/telemetry "$body" >/dev/null
+  printf '{"device_id":"%s","telemetry":{"system":{"uptime":%s,"load":"%s","memory":%s,"ubus":%s},"board":%s,"network":%s,"wifi":%s}}' "$(device_id)" "$uptime_value" "$load_value" "$(memory_json)" "$(ubus_json system info)" "$(ubus_json system board)" "$(ubus_json network.interface dump)" "$(wifi_status_json)"
 }
 
 memory_json() {
@@ -261,7 +307,10 @@ daemon() {
 
 case "${1:-}" in
   register) register_device ;;
-  send-now) telemetry; poll_commands ;;
-  daemon) daemon ;;
-  *) echo "Usage: wrtmonitor-agent register|send-now|daemon" >&2; exit 1 ;;
+  send-now) acquire_lock || exit 0; telemetry; poll_commands ;;
+  daemon) acquire_lock || exit 0; daemon ;;
+  debug) debug ;;
+  debug-telemetry) debug_telemetry ;;
+  debug-api) debug_api ;;
+  *) echo "Usage: wrtmonitor-agent register|send-now|daemon|debug|debug-telemetry|debug-api" >&2; exit 1 ;;
 esac

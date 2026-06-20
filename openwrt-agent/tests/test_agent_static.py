@@ -44,3 +44,14 @@ def test_agent_wifi_telemetry_is_multi_radio():
     assert '"radios":[' in source
     assert 'wireless.@wifi-device[$index]' in source
     assert 'wireless.@wifi-iface[$iface_index]' in source
+
+
+def test_agent_hardening_is_present():
+    source = agent_source()
+
+    assert 'LOCK_DIR="/tmp/wrtmonitor-agent.lock"' in source
+    assert "--connect-timeout" in source
+    assert "--max-time" in source
+    assert "masked_token()" in source
+    assert "debug-telemetry" in source
+    assert "debug-api" in source

@@ -1,5 +1,17 @@
 # TrueNAS Custom App
 
+## Перед первым запуском обязательно замените секреты
+
+Шаблон YAML намеренно содержит значения `change-me-*`. Перед сохранением App укажите собственные значения для `POSTGRES_PASSWORD`, `WRTMONITOR_DATABASE_URL`, `WRTMONITOR_JWT_SECRET` и внешний `WRTMONITOR_PUBLIC_SERVER_URL`.
+
+Секрет можно сгенерировать на Linux/macOS/TrueNAS Shell:
+
+```sh
+openssl rand -base64 32
+```
+
+Один и тот же пароль PostgreSQL должен быть в `POSTGRES_PASSWORD` и в URL базы. Не публикуйте эти значения в скриншотах или issue.
+
 Полная инструкция: [развёртывание серверной части](server-deployment.md).
 
 ## Образ
