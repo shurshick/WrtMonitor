@@ -103,6 +103,12 @@ fun WrtMonitorApp() {
     var accessToken by remember { mutableStateOf(sessionStore.accessToken) }
     var tab by remember { mutableStateOf(Tab.Routers) }
     var selectedDevice by remember { mutableStateOf<RouterDevice?>(null) }
+    val expireSession = {
+        sessionStore.clearSession()
+        accessToken = ""
+        selectedDevice = null
+        tab = Tab.Routers
+    }
     MaterialTheme {
         if (serverUrl.isBlank()) {
             ServerSetupScreen(
@@ -174,7 +180,8 @@ fun WrtMonitorApp() {
                     serverUrl = serverUrl,
                     accessToken = accessToken,
                     modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-                    onOpenDevice = { selectedDevice = it }
+                    onOpenDevice = { selectedDevice = it },
+                    onSessionExpired = expireSession
                 )
             } else {
                 Column(
@@ -186,10 +193,10 @@ fun WrtMonitorApp() {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     when (tab) {
-                        Tab.Routers -> DeviceDetailScreen(serverUrl, accessToken, device!!)
-                        Tab.Wifi -> DeviceTabRequired(device) { WifiControlScreen(serverUrl, accessToken, it) }
-                        Tab.Network -> DeviceTabRequired(device) { NetworkControlScreen(serverUrl, accessToken, it) }
-                        Tab.System -> DeviceTabRequired(device) { SystemControlScreen(serverUrl, accessToken, it) }
+                        Tab.Routers -> DeviceDetailScreen(serverUrl, accessToken, device!!, expireSession)
+                        Tab.Wifi -> DeviceTabRequired(device) { WifiControlScreen(serverUrl, accessToken, it, expireSession) }
+                        Tab.Network -> DeviceTabRequired(device) { NetworkControlScreen(serverUrl, accessToken, it, expireSession) }
+                        Tab.System -> DeviceTabRequired(device) { SystemControlScreen(serverUrl, accessToken, it, expireSession) }
                         Tab.Settings -> AppSettingsScreen(
                             currentServerUrl = serverUrl,
                             onSave = { value ->

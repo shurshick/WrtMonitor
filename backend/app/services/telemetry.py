@@ -27,6 +27,8 @@ def cleanup_device_telemetry(db: Session, device_id: UUID, keep: int) -> None:
 def build_telemetry_summary(payload: dict[str, Any]) -> dict[str, Any]:
     system = payload.get("system") or {}
     memory = system.get("memory") or {}
+    cpu = payload.get("cpu") or {}
+    storage = payload.get("storage") or {}
     wifi = payload.get("wifi") or {}
     network = payload.get("network") or {}
     interfaces = network.get("interfaces") or network.get("interface") or []
@@ -39,6 +41,9 @@ def build_telemetry_summary(payload: dict[str, Any]) -> dict[str, Any]:
             memory.get("available_kb", memory.get("free_kb", 0)) or 0
         )
         // 1024,
+        "cpu_cores": cpu.get("cores"),
+        "storage_total_mb": int(storage.get("total_kb", 0) or 0) // 1024,
+        "storage_available_mb": int(storage.get("available_kb", 0) or 0) // 1024,
         "wifi_available": bool(wifi.get("available", False)),
         "wifi_radio_count": len(radios),
         "network_interface_count": len(interfaces),

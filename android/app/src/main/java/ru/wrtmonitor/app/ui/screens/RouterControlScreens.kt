@@ -30,12 +30,13 @@ import org.json.JSONObject
 import ru.wrtmonitor.app.R
 import ru.wrtmonitor.app.api.ApiResult
 import ru.wrtmonitor.app.api.WrtMonitorApi
+import ru.wrtmonitor.app.api.isUnauthorized
 import ru.wrtmonitor.app.api.dto.DeviceDto
 import ru.wrtmonitor.app.api.dto.TelemetryDto
 import ru.wrtmonitor.app.ui.components.InfoRow
 
 @Composable
-fun WifiControlScreen(serverUrl: String, accessToken: String, device: DeviceDto) {
+fun WifiControlScreen(serverUrl: String, accessToken: String, device: DeviceDto, onSessionExpired: () -> Unit) {
     val scope = rememberCoroutineScope()
     var telemetry by remember { mutableStateOf<TelemetryDto?>(null) }
     var ssid by remember { mutableStateOf("") }
@@ -52,7 +53,7 @@ fun WifiControlScreen(serverUrl: String, accessToken: String, device: DeviceDto)
                     ssid = first?.optJSONArray("ssid")?.optString(0).orEmpty()
                     enabled = first?.optBoolean("up", true) ?: true
                 }
-                is ApiResult.Error -> message = result.message
+                is ApiResult.Error -> if (result.isUnauthorized()) onSessionExpired() else message = result.message
             }
         }
         Unit
@@ -95,7 +96,7 @@ fun WifiControlScreen(serverUrl: String, accessToken: String, device: DeviceDto)
 }
 
 @Composable
-fun NetworkControlScreen(serverUrl: String, accessToken: String, device: DeviceDto) {
+fun NetworkControlScreen(serverUrl: String, accessToken: String, device: DeviceDto, onSessionExpired: () -> Unit) {
     val scope = rememberCoroutineScope()
     var telemetry by remember { mutableStateOf<TelemetryDto?>(null) }
     var message by remember { mutableStateOf("") }
@@ -103,7 +104,7 @@ fun NetworkControlScreen(serverUrl: String, accessToken: String, device: DeviceD
         scope.launch {
             when (val result = withContext(Dispatchers.IO) { WrtMonitorApi(serverUrl, accessToken).getLatestTelemetry(device.id) }) {
                 is ApiResult.Success -> telemetry = result.data
-                is ApiResult.Error -> message = result.message
+                is ApiResult.Error -> if (result.isUnauthorized()) onSessionExpired() else message = result.message
             }
         }
         Unit
@@ -139,7 +140,7 @@ fun NetworkControlScreen(serverUrl: String, accessToken: String, device: DeviceD
 }
 
 @Composable
-fun SystemControlScreen(serverUrl: String, accessToken: String, device: DeviceDto) {
+fun SystemControlScreen(serverUrl: String, accessToken: String, device: DeviceDto, onSessionExpired: () -> Unit) {
     val scope = rememberCoroutineScope()
     var telemetry by remember { mutableStateOf<TelemetryDto?>(null) }
     var message by remember { mutableStateOf("") }
@@ -148,7 +149,7 @@ fun SystemControlScreen(serverUrl: String, accessToken: String, device: DeviceDt
         scope.launch {
             when (val result = withContext(Dispatchers.IO) { WrtMonitorApi(serverUrl, accessToken).getLatestTelemetry(device.id) }) {
                 is ApiResult.Success -> telemetry = result.data
-                is ApiResult.Error -> message = result.message
+                is ApiResult.Error -> if (result.isUnauthorized()) onSessionExpired() else message = result.message
             }
         }
         Unit

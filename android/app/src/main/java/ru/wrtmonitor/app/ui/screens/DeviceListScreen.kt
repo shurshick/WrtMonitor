@@ -32,14 +32,15 @@ import kotlinx.coroutines.withContext
 import ru.wrtmonitor.app.R
 import ru.wrtmonitor.app.api.ApiResult
 import ru.wrtmonitor.app.api.WrtMonitorApi
+import ru.wrtmonitor.app.api.isUnauthorized
 import ru.wrtmonitor.app.api.dto.DeviceDto
 import ru.wrtmonitor.app.ui.components.InfoRow
 import ru.wrtmonitor.app.viewmodel.DevicesUiState
 
 @Composable
-fun DeviceListScreen(serverUrl: String, accessToken: String, modifier: Modifier = Modifier, onOpenDevice: (DeviceDto) -> Unit) {
+fun DeviceListScreen(serverUrl: String, accessToken: String, modifier: Modifier = Modifier, onOpenDevice: (DeviceDto) -> Unit, onSessionExpired: () -> Unit) {
     val scope = rememberCoroutineScope(); var state by remember { mutableStateOf(DevicesUiState(loading = true)) }
-    fun refresh() { state = state.copy(loading = true, error = null); scope.launch { when (val result = withContext(Dispatchers.IO) { WrtMonitorApi(serverUrl, accessToken).getDevices() }) { is ApiResult.Success -> state = DevicesUiState(devices = result.data); is ApiResult.Error -> state = DevicesUiState(error = result.message) } } }
+    fun refresh() { state = state.copy(loading = true, error = null); scope.launch { when (val result = withContext(Dispatchers.IO) { WrtMonitorApi(serverUrl, accessToken).getDevices() }) { is ApiResult.Success -> state = DevicesUiState(devices = result.data); is ApiResult.Error -> if (result.isUnauthorized()) onSessionExpired() else state = DevicesUiState(error = result.message) } } }
     LaunchedEffect(serverUrl, accessToken) { refresh() }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.routers), style = MaterialTheme.typography.titleLarge); Button({ refresh() }, enabled = !state.loading) { Text(stringResource(R.string.refresh)) } }

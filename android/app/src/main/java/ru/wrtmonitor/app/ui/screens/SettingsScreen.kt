@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
+import org.json.JSONArray
 import ru.wrtmonitor.app.R
 import ru.wrtmonitor.app.domain.VersionComparator
 import ru.wrtmonitor.app.ui.components.InfoRow
@@ -42,7 +42,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 private const val PROJECT_URL = "https://github.com/shurshick/wrtmonitor"
-private const val LATEST_RELEASE_URL = "https://api.github.com/repos/shurshick/wrtmonitor/releases/latest"
+private const val RELEASES_URL = "https://api.github.com/repos/shurshick/wrtmonitor/releases?per_page=10"
 
 private sealed interface UpdateState {
     data class UpToDate(val latestVersion: String) : UpdateState
@@ -127,10 +127,11 @@ private fun AboutScreen(updateState: UpdateState?, checkingUpdate: Boolean, onBa
 private fun appVersionName(context: android.content.Context): String = context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
 private fun openUrl(context: android.content.Context, url: String) = context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 private fun checkForUpdate(currentVersion: String): UpdateState {
-    val connection = (URL(LATEST_RELEASE_URL).openConnection() as HttpURLConnection).apply { requestMethod = "GET"; connectTimeout = 10_000; readTimeout = 10_000; setRequestProperty("Accept", "application/vnd.github+json"); setRequestProperty("User-Agent", "wrtmonitor-android") }
+    val connection = (URL(RELEASES_URL).openConnection() as HttpURLConnection).apply { requestMethod = "GET"; connectTimeout = 10_000; readTimeout = 10_000; setRequestProperty("Accept", "application/vnd.github+json"); setRequestProperty("User-Agent", "wrtmonitor-android") }
     val status = connection.responseCode
     if (status !in 200..299) throw IllegalStateException("HTTP $status")
-    val release = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+    val releases = JSONArray(connection.inputStream.bufferedReader().use { it.readText() })
+    val release = (0 until releases.length()).mapNotNull { releases.optJSONObject(it) }.firstOrNull { !it.optBoolean("draft", false) } ?: throw IllegalStateException("No published releases")
     val latestVersion = release.optString("tag_name").removePrefix("v")
     return if (VersionComparator.compare(latestVersion, currentVersion) > 0) UpdateState.Available(latestVersion, release.optString("html_url")) else UpdateState.UpToDate(latestVersion)
 }
