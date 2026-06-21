@@ -6,7 +6,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import delete
 from sqlalchemy.orm import sessionmaker
 
-import backend.app.main as application
 import backend.app.web.routes as main
 import backend.app.api.setup as setup_api
 import backend.app.services.setup as setup_service
@@ -21,13 +20,21 @@ from backend.app.models import (
     User,
 )
 from backend.app.main import app
-from backend.app.services.commands import ALLOWED_COMMANDS
+from backend.app.services.commands import ALLOWED_COMMANDS, public_command_payload
 from backend.app.schemas import SetupRequest
 
 
 def test_allowed_commands_are_explicit():
     assert "router.reboot" in ALLOWED_COMMANDS
+    assert "agent.disconnect" in ALLOWED_COMMANDS
+    assert "wifi.set_password" in ALLOWED_COMMANDS
     assert "shell.exec" not in ALLOWED_COMMANDS
+
+
+def test_password_command_payload_is_redacted_for_clients():
+    assert public_command_payload("wifi.set_password", {"key": "secret-pass"}) == {
+        "key": "********"
+    }
 
 
 def test_setup_status_endpoint_shape(monkeypatch):

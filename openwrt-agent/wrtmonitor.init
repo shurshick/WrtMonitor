@@ -8,6 +8,10 @@ EXTRA_HELP="        status          Show service status"
 PID_FILE="/var/run/wrtmonitor-agent.pid"
 
 start() {
+  if [ "$(uci -q get wrtmonitor.main.enabled 2>/dev/null)" != "1" ]; then
+    echo "wrtmonitor is disabled"
+    return 0
+  fi
   if [ -r "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
     echo "wrtmonitor already running"
     return 0

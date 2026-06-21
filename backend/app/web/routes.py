@@ -1,6 +1,6 @@
+from datetime import UTC, datetime
 import json
 import secrets
-from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Request
@@ -23,12 +23,20 @@ from ..services.devices import get_user_device_or_404
 from ..services.audit import audit
 from ..services.auth import settings, web_user_from_session
 from ..services.setup import complete_setup, is_setup_required
-from ..services.telemetry import TELEMETRY_STALE_SECONDS
 from .csrf import generate_csrf_token, verify_csrf_token
 
 
 templates = Jinja2Templates(directory="backend/app/templates")
 router = APIRouter()
+
+
+def format_timestamp(value: datetime | None) -> str:
+    if value is None:
+        return "нет данных"
+    return value.astimezone(UTC).strftime("%d.%m.%Y %H:%M:%S UTC")
+
+
+templates.env.filters["timestamp"] = format_timestamp
 
 
 def require_web_csrf(
@@ -180,8 +188,7 @@ def device_page(
         .order_by(DeviceCommand.created_at.desc())
         .limit(10)
     ).all()
-    latest = telemetry.created_at.isoformat() if telemetry else "нет данных"
-    from datetime import UTC, datetime
+    latest = format_timestamp(telemetry.created_at) if telemetry else "нет данных"
 
     age = (
         max(0, int((datetime.now(UTC) - telemetry.created_at).total_seconds()))
@@ -219,6 +226,7 @@ def web_device_command(
     command_type: str = Form(...),
     ssid: str = Form(default=""),
     enabled: str = Form(default="true"),
+    wifi_password: str = Form(default=""),
     csrf_token: str = Form(...),
     config: Settings = Depends(settings),
     db: Session = Depends(get_db),
@@ -234,7 +242,9 @@ def web_device_command(
     if command_type not in ALLOWED_COMMANDS:
         raise HTTPException(status_code=400, detail="Unsupported command or device")
     try:
-        payload = build_command_payload_from_web_form(command_type, ssid, enabled)
+        payload = build_command_payload_from_web_form(
+            command_type, ssid, enabled, wifi_password
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     command = create_device_command(
@@ -254,6 +264,43 @@ def web_device_command(
         {"command_type": command_type, "source": "web"},
     )
     db.commit()
+    return RedirectResponse(f"/devices/{device_id}", status_code=303)
+
+
+@router.post("/devices/{device_id}/disconnect")
+def disconnect_device_page(
+    device_id: UUID,
+    csrf_token: str = Form(...),
+    config: Settings = Depends(settings),
+    db: Session = Depends(get_db),
+    wrtmonitor_session: str | None = Cookie(default=None),
+) -> RedirectResponse:
+    if is_setup_required(db, config):
+        return RedirectResponse("/setup", status_code=303)
+    user = web_user_from_session(wrtmonitor_session, config, db)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    require_web_csrf(wrtmonitor_session, csrf_token, config)
+    device = get_user_device_or_404(db, user, device_id)
+    if device.status not in {"disabled", "disconnecting"}:
+        command = create_device_command(
+            db,
+            device_id=device.id,
+            command_type="agent.disconnect",
+            payload={},
+            created_by=user.id,
+            source="web",
+        )
+        device.status = "disconnecting"
+        audit(
+            db,
+            user.id,
+            "device.disconnect",
+            "device",
+            str(device.id),
+            {"command_id": str(command.id), "source": "web"},
+        )
+        db.commit()
     return RedirectResponse(f"/devices/{device_id}", status_code=303)
 
 

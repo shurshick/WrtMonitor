@@ -7,4 +7,5 @@
   </ul>
   <form method="post" action="/devices/{{ device.id }}/web-command"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="command_type" value="wifi.set_enabled"><label>Состояние<select name="enabled"><option value="true">Включить</option><option value="false">Выключить</option></select></label><button>Применить</button></form>
   <form method="post" action="/devices/{{ device.id }}/web-command"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="command_type" value="wifi.set_ssid"><label>Новый SSID<input name="ssid" required maxlength="64"></label><button>Изменить SSID</button></form>
+  <form method="post" action="/devices/{{ device.id }}/web-command"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="command_type" value="wifi.set_password"><label>Новый пароль Wi-Fi<input name="wifi_password" type="password" required minlength="8" autocomplete="new-password"></label><button>Изменить пароль</button></form>
 </section>

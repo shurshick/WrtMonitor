@@ -27,6 +27,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import ru.wrtmonitor.app.R
 import ru.wrtmonitor.app.api.ApiResult
 import ru.wrtmonitor.app.api.WrtMonitorApi
@@ -91,7 +94,7 @@ private fun TelemetrySummary(telemetry: TelemetryDto) {
     val radios = wifi?.optJSONArray("radios")
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         TelemetrySection("Состояние") {
-            InfoRow(stringResource(R.string.updated_at), telemetry.createdAt, stringResource(R.string.no_data))
+            InfoRow(stringResource(R.string.updated_at), formatTimestamp(telemetry.createdAt), stringResource(R.string.no_data))
             InfoRow(stringResource(R.string.age), telemetry.ageSeconds?.let { "$it сек" }, stringResource(R.string.no_data))
             InfoRow(stringResource(R.string.source), telemetry.source, stringResource(R.string.no_data))
             if (telemetry.isStale) Text(stringResource(R.string.stale_telemetry), color = MaterialTheme.colorScheme.error)
@@ -168,4 +171,5 @@ private fun memoryLabel(memory: JSONObject): String = "${memory.optLong("availab
 private fun storageLabel(storage: JSONObject): String = "${storage.optLong("used_kb") / 1024} использовано, ${storage.optLong("available_kb") / 1024} MB свободно"
 private fun thermalLabel(thermal: JSONObject?): String? = if (thermal?.optBoolean("available", false) == true) "${thermal.optLong("milli_celsius") / 1000.0} °C" else null
 private fun formatBytes(bytes: Long): String = when { bytes >= 1_073_741_824 -> "%.1f GB".format(bytes / 1_073_741_824.0); bytes >= 1_048_576 -> "%.1f MB".format(bytes / 1_048_576.0); bytes >= 1024 -> "%.1f KB".format(bytes / 1024.0); else -> "$bytes B" }
+private fun formatTimestamp(value: String?): String? = runCatching { OffsetDateTime.parse(value).atZoneSameInstant(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss")) }.getOrNull()
 private fun formatDuration(seconds: Long): String { val days = seconds / 86_400; val hours = (seconds % 86_400) / 3_600; val minutes = (seconds % 3_600) / 60; return listOfNotNull(days.takeIf { it > 0 }?.let { "$it д" }, hours.takeIf { it > 0 }?.let { "$it ч" }, minutes.let { "$it мин" }).joinToString(" ") }

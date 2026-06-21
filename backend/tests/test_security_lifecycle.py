@@ -1,10 +1,7 @@
-from datetime import timedelta
 from uuid import uuid4
 
 from backend.app.services.commands import (
     create_device_command,
-    expire_old_commands,
-    now_utc,
 )
 from backend.app.services.telemetry import build_telemetry_summary
 from backend.app.web.csrf import generate_csrf_token, verify_csrf_token

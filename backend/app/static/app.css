@@ -76,7 +76,8 @@ dl { margin: 0; display: grid; grid-template-columns: minmax(100px, .8fr) minmax
 dt { color: var(--muted); }
 dd { margin: 0; font-weight: 650; overflow-wrap: anywhere; }
 ul { margin: 0 0 16px; padding-left: 20px; }
-.card form + form { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.card form { margin-top: 14px; }
+.card form + form { padding-top: 14px; border-top: 1px solid var(--border); }
 
 .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 table { border-collapse: collapse; width: 100%; min-width: 720px; }

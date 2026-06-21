@@ -59,7 +59,7 @@ WRTMONITOR_PUBLIC_SERVER_URL=http://server-ip:8088
 В релизе файл называется:
 
 ```text
-wrtmonitor-truenas-v0.1.1-rc2.yaml
+wrtmonitor-truenas-v0.1.1-rc5.yaml
 ```
 
 Образ тестовой версии:
@@ -88,13 +88,14 @@ OpenWrt agent выполняет только команды из allowlist:
 - чтение статуса Wi-Fi;
 - включение/выключение Wi-Fi;
 - изменение SSID;
+- изменение пароля Wi-Fi;
 - чтение сетевых интерфейсов.
 
 Все действия управления должны попадать в аудит-лог. Низкоуровневые UCI-команды намеренно не открыты как произвольный remote shell.
 
 ## Статус
 
-Текущая release candidate версия `v0.1.1-rc2` содержит:
+Текущая release candidate версия `v0.1.1-rc5` содержит:
 
 - backend API;
 - PostgreSQL и Alembic-миграции;
@@ -112,6 +113,9 @@ OpenWrt agent выполняет только команды из allowlist:
 - adaptive icon для Android;
 - стабильную debug-подпись и повышенный `versionCode` для обновления APK поверх установленной версии.
 - CSRF-защиту Web UI, security headers и command lifecycle с истечением команд.
+- тёмную dashboard-тему Web UI и Android, расширенную telemetry, читаемые дату и время;
+- изменение SSID, состояния и пароля Wi-Fi через очередь команд;
+- отключение роутера: агент подтверждает команду, останавливается и не возобновляет опрос до повторного подключения.
 
 Следующие крупные блоки:
 

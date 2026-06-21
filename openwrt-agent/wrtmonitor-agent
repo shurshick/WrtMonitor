@@ -3,7 +3,7 @@ set -eu
 
 CONFIG="wrtmonitor.main"
 LOCK_DIR="/tmp/wrtmonitor-agent.lock"
-AGENT_VERSION="0.1.1-rc4"
+AGENT_VERSION="0.1.1-rc5"
 
 cfg() {
   uci -q get "$CONFIG.$1" 2>/dev/null || true
@@ -12,6 +12,7 @@ cfg() {
 server_url() { cfg server_url | sed 's#/$##'; }
 device_token() { cfg device_token; }
 device_id() { cfg device_id; }
+agent_enabled() { [ "$(cfg enabled)" = "1" ]; }
 
 api() {
   method="$1"
@@ -182,6 +183,7 @@ register_device() {
 }
 
 telemetry() {
+  agent_enabled || return 0
   [ -n "$(device_id)" ] || register_device
   body="$(telemetry_payload)"
   api POST /api/v1/agent/telemetry "$body" >/dev/null
@@ -299,6 +301,7 @@ wifi_status_json() {
 }
 
 poll_commands() {
+  agent_enabled || return 0
   [ -n "$(device_id)" ] || register_device
   require_json_tool || return 1
   commands="$(api GET /api/v1/agent/commands)"
@@ -322,6 +325,7 @@ execute_command() {
   command_payload="${3:-{}}"
   status="done"
   result="{}"
+  disconnect_after=0
   case "$command_type" in
     router.reboot)
       result='{"message":"reboot scheduled"}'
@@ -359,8 +363,27 @@ execute_command() {
         result='{"error":"ssid is required"}'
       fi
       ;;
+    wifi.set_password)
+      printf '%s' "$command_payload" >/tmp/wrtmonitor-command-payload
+      wifi_key="$(json_get_string /tmp/wrtmonitor-command-payload '@.key')"
+      iface="$(json_get_string /tmp/wrtmonitor-command-payload '@.iface')"
+      rm -f /tmp/wrtmonitor-command-payload
+      [ -n "$iface" ] || iface="@wifi-iface[0]"
+      if [ "${#wifi_key}" -ge 8 ]; then
+        uci set "wireless.$iface.key=$wifi_key" >/dev/null 2>&1 || status="failed"
+        uci commit wireless >/dev/null 2>&1 || status="failed"
+        wifi reload >/dev/null 2>&1 || status="failed"
+      else
+        status="failed"
+        result='{"error":"password must contain at least 8 characters"}'
+      fi
+      ;;
     network.interfaces)
       result="{\"ifstatus\":\"$(ifstatus lan 2>/dev/null | sed 's/"/\\"/g' | tr '\n' ' ')\"}"
+      ;;
+    agent.disconnect)
+      result='{"message":"agent disabled"}'
+      disconnect_after=1
       ;;
     *)
       status="failed"
@@ -368,9 +391,16 @@ execute_command() {
       ;;
   esac
   api POST "/api/v1/agent/commands/$command_id/result" "{\"status\":\"$status\",\"result\":$result}" >/dev/null || true
+  if [ "$disconnect_after" = "1" ] && [ "$status" = "done" ]; then
+    uci set "$CONFIG.enabled=0"
+    uci commit wrtmonitor
+    logger -t wrtmonitor "agent disconnected by server command"
+    exit 0
+  fi
 }
 
 daemon() {
+  agent_enabled || exit 0
   while true; do
     telemetry || logger -t wrtmonitor "telemetry failed"
     poll_commands || logger -t wrtmonitor "command polling failed"

@@ -77,6 +77,11 @@ def command_result(
     command.last_error = (
         str(payload.result.get("error")) if payload.result.get("error") else None
     )
+    if command.command_type == "agent.disconnect" and command.status == "success":
+        device.status = "disabled"
+        device.updated_at = now
+    if command.command_type == "wifi.set_password":
+        command.payload = {}
     audit(
         db,
         None,

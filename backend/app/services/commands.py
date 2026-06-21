@@ -14,12 +14,14 @@ ALLOWED_COMMANDS = {
     "wifi.status",
     "wifi.set_enabled",
     "wifi.set_ssid",
+    "wifi.set_password",
     "network.interfaces",
+    "agent.disconnect",
 }
 
 
 def build_command_payload_from_web_form(
-    command_type: str, ssid: str, enabled: str
+    command_type: str, ssid: str, enabled: str, wifi_password: str = ""
 ) -> dict:
     if command_type not in ALLOWED_COMMANDS:
         raise ValueError("Unsupported command")
@@ -29,7 +31,19 @@ def build_command_payload_from_web_form(
         return {"ssid": ssid.strip()}
     if command_type == "wifi.set_enabled":
         return {"enabled": enabled.lower() == "true"}
+    if command_type == "wifi.set_password":
+        if len(wifi_password) < 8:
+            raise ValueError("Wi-Fi password must contain at least 8 characters")
+        return {"key": wifi_password}
     return {}
+
+
+def public_command_payload(command_type: str, payload: dict | None) -> dict:
+    """Return a command payload safe for API and Web UI history."""
+    safe_payload = dict(payload or {})
+    if command_type == "wifi.set_password" and "key" in safe_payload:
+        safe_payload["key"] = "********"
+    return safe_payload
 
 
 def now_utc() -> datetime:

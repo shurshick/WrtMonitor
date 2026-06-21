@@ -10,6 +10,9 @@
   <div class="toolbar__actions">
     <span class="status status--{{ device.status|lower }}">{{ device.status }}</span>
     <form method="get" action="/devices/{{ device.id }}"><button class="button button--secondary" type="submit">Обновить</button></form>
+    {% if device.status not in ['disabled', 'disconnecting'] %}
+    <form method="post" action="/devices/{{ device.id }}/disconnect"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button--danger" type="submit">Отключить</button></form>
+    {% endif %}
   </div>
 </div>
 <div class="grid">

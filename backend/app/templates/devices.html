@@ -13,7 +13,7 @@
         <td><a href="/devices/{{ device.id }}">{{ device.name or device.hostname or 'Роутер' }}</a></td>
         <td>{{ device.hostname or '—' }}</td><td>{{ device.model or '—' }}</td><td>{{ device.firmware or '—' }}</td>
         <td><span class="status status--{{ device.status|lower }}">{{ device.status }}</span></td>
-        <td>{{ device.last_seen_at or 'нет данных' }}</td>
+        <td>{{ device.last_seen_at|timestamp }}</td>
       </tr>
     {% else %}<tr><td class="empty-state" colspan="6">Роутеры пока не подключены</td></tr>{% endfor %}</tbody>
   </table>

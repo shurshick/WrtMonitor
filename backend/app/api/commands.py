@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -15,6 +16,7 @@ from ..services.commands import (
     ALLOWED_COMMANDS,
     create_device_command,
     expire_old_commands,
+    public_command_payload,
 )
 
 
@@ -51,6 +53,37 @@ def create_command(
     return {"command_id": str(command.id), "status": command.status}
 
 
+@router.post("/{device_id}/disconnect")
+def disconnect_device(
+    device_id: UUID,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    device = get_user_device_or_404(db, user, device_id)
+    if device.status in {"disabled", "disconnecting"}:
+        return {"status": device.status}
+    command = create_device_command(
+        db,
+        device_id=device.id,
+        command_type="agent.disconnect",
+        payload={},
+        created_by=user.id,
+        source="api",
+    )
+    device.status = "disconnecting"
+    device.updated_at = datetime.now(UTC)
+    audit(
+        db,
+        user.id,
+        "device.disconnect",
+        "device",
+        str(device.id),
+        {"command_id": str(command.id)},
+    )
+    db.commit()
+    return {"command_id": str(command.id), "status": "disconnecting"}
+
+
 @router.get("/{device_id}/commands")
 def list_device_commands(
     device_id: UUID,
@@ -78,7 +111,7 @@ def list_device_commands(
             "command_type": command.command_type,
             "status": command.status,
             "source": command.source,
-            "payload": command.payload,
+            "payload": public_command_payload(command.command_type, command.payload),
             "result": command.result,
             "created_at": iso(command.created_at),
             "picked_at": iso(command.picked_at),

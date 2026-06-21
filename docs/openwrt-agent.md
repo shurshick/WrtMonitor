@@ -64,7 +64,7 @@ sh install-openwrt.sh
 ```sh
 cd /tmp
 wget -O wrtmonitor-agent.tar.gz \
-  https://github.com/shurshick/wrtmonitor/releases/download/v0.1.1-rc3-session-telemetry/wrtmonitor-openwrt-agent-v0.1.1-rc3.tar.gz
+  https://github.com/shurshick/wrtmonitor/releases/download/v0.1.1-rc5-device-lifecycle/wrtmonitor-openwrt-agent-v0.1.1-rc5.tar.gz
 tar -xzf wrtmonitor-agent.tar.gz
 sh install-openwrt.sh --server 'https://monitor.example.ru' --admin-user 'admin@example.com' --admin-password 'your-admin-password' --name 'HomeRouter'
 ```

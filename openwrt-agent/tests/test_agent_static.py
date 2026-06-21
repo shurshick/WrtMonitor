@@ -54,6 +54,14 @@ def test_agent_collects_extended_safe_telemetry():
         assert f"{name}()" in source
 
 
+def test_agent_has_disconnect_and_wifi_password_commands():
+    source = agent_source()
+
+    assert "agent.disconnect)" in source
+    assert "wifi.set_password)" in source
+    assert "agent_enabled()" in source
+
+
 def test_agent_hardening_is_present():
     source = agent_source()
 
