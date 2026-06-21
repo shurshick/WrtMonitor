@@ -11,7 +11,6 @@ STATUS_FILE="$STATUS_DIR/update-status.env"
 AGENT_VERSION="0.1.1-rc7"
 DEFAULT_UPDATE_INTERVAL_HOURS="6"
 PENDING_AGENT_EXEC=0
-PENDING_TARGET_VERSION=""
 
 cfg() {
   uci -q get "$CONFIG.$1" 2>/dev/null || true
@@ -195,35 +194,60 @@ compare_versions() {
   left="$(parse_version_parts "$1")"
   right="$(parse_version_parts "$2")"
   if [ -z "$left" ] || [ -z "$right" ]; then
-    if [ "$1" = "$2" ]; then
-      printf '0'
-    elif [ "$1" \> "$2" ]; then
-      printf '1'
-    else
-      printf '%s' '-1'
-    fi
+    awk -v left_raw="$1" -v right_raw="$2" 'BEGIN {
+      if (left_raw == right_raw) {
+        print 0
+      } else if (left_raw > right_raw) {
+        print 1
+      } else {
+        print -1
+      }
+    }'
     return
   fi
-  left_major="$(printf '%s' "$left" | awk '{print $1}')"
-  left_minor="$(printf '%s' "$left" | awk '{print $2}')"
-  left_patch="$(printf '%s' "$left" | awk '{print $3}')"
-  left_rc="$(printf '%s' "$left" | awk '{print $4}')"
-  right_major="$(printf '%s' "$right" | awk '{print $1}')"
-  right_minor="$(printf '%s' "$right" | awk '{print $2}')"
-  right_patch="$(printf '%s' "$right" | awk '{print $3}')"
-  right_rc="$(printf '%s' "$right" | awk '{print $4}')"
-  for part in major minor patch rc; do
-    eval "left_value=\$left_$part"
-    eval "right_value=\$right_$part"
-    if [ "$left_value" -gt "$right_value" ]; then
-      printf '1'
-      return
-    fi
-    if [ "$left_value" -lt "$right_value" ]; then
-      printf '%s' '-1'
-      return
-    fi
-  done
+  set -- $left
+  left_major="$1"
+  left_minor="$2"
+  left_patch="$3"
+  left_rc="$4"
+  set -- $right
+  right_major="$1"
+  right_minor="$2"
+  right_patch="$3"
+  right_rc="$4"
+
+  if [ "$left_major" -gt "$right_major" ]; then
+    printf '1'
+    return
+  fi
+  if [ "$left_major" -lt "$right_major" ]; then
+    printf '%s' '-1'
+    return
+  fi
+  if [ "$left_minor" -gt "$right_minor" ]; then
+    printf '1'
+    return
+  fi
+  if [ "$left_minor" -lt "$right_minor" ]; then
+    printf '%s' '-1'
+    return
+  fi
+  if [ "$left_patch" -gt "$right_patch" ]; then
+    printf '1'
+    return
+  fi
+  if [ "$left_patch" -lt "$right_patch" ]; then
+    printf '%s' '-1'
+    return
+  fi
+  if [ "$left_rc" -gt "$right_rc" ]; then
+    printf '1'
+    return
+  fi
+  if [ "$left_rc" -lt "$right_rc" ]; then
+    printf '%s' '-1'
+    return
+  fi
   printf '0'
 }
 
@@ -347,7 +371,6 @@ perform_rollback() {
   fi
   remember_update_result "rollback" "$reason" "$AGENT_VERSION"
   log_notice "agent rollback completed: $reason"
-  PENDING_TARGET_VERSION="$(cat "$BACKUP_DIR/VERSION.previous" 2>/dev/null || echo "$AGENT_VERSION")"
   PENDING_AGENT_EXEC=1
   if [ "$mode" = "manual" ]; then
     restart_service_foreground || return 1
@@ -417,7 +440,6 @@ check_for_update() {
   remember_update_result "success" "" "$remote_version"
   log_notice "agent updated: $AGENT_VERSION -> $remote_version"
   PENDING_AGENT_EXEC=1
-  PENDING_TARGET_VERSION="$remote_version"
   rm -rf "$tmp_dir"
   release_update_lock
   if [ "$mode" = "manual" ]; then
