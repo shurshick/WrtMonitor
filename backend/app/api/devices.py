@@ -1,7 +1,7 @@
 import secrets
 from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -11,6 +11,7 @@ from ..db import get_db
 from ..models import Device, User
 from ..services.audit import audit
 from ..services.auth import current_user
+from ..services.devices import archive_device_or_409, get_user_device_or_404
 from ..schemas import DeviceProvisionRequest
 from ..security import hash_token
 
@@ -35,7 +36,9 @@ def list_devices(
             else None,
         }
         for device in db.scalars(
-            select(Device).order_by(Device.created_at.desc())
+            select(Device)
+            .where(Device.archived_at.is_(None))
+            .order_by(Device.created_at.desc())
         ).all()
     ]
 
@@ -54,6 +57,7 @@ def provision_device(
             Device.hostname == payload.hostname,
             Device.name == payload.name,
             Device.model == payload.model,
+            Device.archived_at.is_(None),
         )
         .order_by(Device.updated_at.desc())
         .limit(1)
@@ -89,3 +93,27 @@ def provision_device(
     )
     db.commit()
     return {"device_id": str(device.id), "device_token": device_token}
+
+
+@router.post("/{device_id}/archive")
+def archive_device(
+    device_id: UUID,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    device = get_user_device_or_404(db, user, device_id)
+    archive_device_or_409(device)
+    now = datetime.now(UTC)
+    device.archived_at = now
+    device.updated_at = now
+    device.token_hash = hash_token(secrets.token_urlsafe(48))
+    audit(
+        db,
+        user.id,
+        "device.archive",
+        "device",
+        str(device.id),
+        {"status": device.status},
+    )
+    db.commit()
+    return {"status": "archived"}

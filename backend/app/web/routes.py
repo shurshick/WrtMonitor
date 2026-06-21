@@ -19,7 +19,8 @@ from ..services.commands import (
     build_command_payload_from_web_form,
     create_device_command,
 )
-from ..services.devices import get_user_device_or_404
+from ..services.devices import archive_device_or_409, get_user_device_or_404
+from ..security import hash_token
 from ..services.audit import audit
 from ..services.auth import settings, web_user_from_session
 from ..services.setup import complete_setup, is_setup_required
@@ -36,7 +37,26 @@ def format_timestamp(value: datetime | None) -> str:
     return value.astimezone(UTC).strftime("%d.%m.%Y %H:%M:%S UTC")
 
 
+def format_duration(value: int | None) -> str:
+    if value is None:
+        return "нет данных"
+    days, remainder = divmod(int(value), 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    parts: list[str] = []
+    if days:
+        parts.append(f"{days} д")
+    if hours:
+        parts.append(f"{hours} ч")
+    if minutes:
+        parts.append(f"{minutes} мин")
+    if seconds or not parts:
+        parts.append(f"{seconds} сек")
+    return " ".join(parts)
+
+
 templates.env.filters["timestamp"] = format_timestamp
+templates.env.filters["duration"] = format_duration
 
 
 def require_web_csrf(
@@ -141,7 +161,11 @@ def devices_page(
     if not user:
         return RedirectResponse("/login", status_code=303)
     csrf_token = generate_csrf_token(wrtmonitor_session or "", config.jwt_secret)
-    devices = db.scalars(select(Device).order_by(Device.created_at.desc())).all()
+    devices = db.scalars(
+        select(Device)
+        .where(Device.archived_at.is_(None))
+        .order_by(Device.created_at.desc())
+    ).all()
     return templates.TemplateResponse(
         request, "devices.html", {"devices": devices, "csrf_token": csrf_token}
     )
@@ -178,6 +202,7 @@ def device_page(
     processes = system.get("processes") or {}
     board = payload.get("board") or {}
     wifi = payload.get("wifi") or {}
+    agent = payload.get("agent") or {}
     network = payload.get("network") or {}
     network_devices = payload.get("network_devices") or {}
     radios = wifi.get("radios") or []
@@ -211,6 +236,7 @@ def device_page(
             "traffic": traffic,
             "processes": processes,
             "board": board,
+            "agent": agent,
             "radios": radios,
             "interfaces": interfaces,
             "network_devices": network_devices,
@@ -304,8 +330,9 @@ def disconnect_device_page(
     return RedirectResponse(f"/devices/{device_id}", status_code=303)
 
 
-@router.post("/devices/{device_id}/delete")
-def delete_device_page(
+@router.post("/devices/{device_id}/archive")
+def archive_device_page(
+    request: Request,
     device_id: UUID,
     csrf_token: str = Form(...),
     config: Settings = Depends(settings),
@@ -319,13 +346,31 @@ def delete_device_page(
         return RedirectResponse("/login", status_code=303)
     require_web_csrf(wrtmonitor_session, csrf_token, config)
     device = get_user_device_or_404(db, user, device_id)
-    if (
-        device
-        and device.last_seen_at is None
-        and device.status in {"provisioned", "offline"}
-    ):
-        db.delete(device)
-        db.commit()
+    try:
+        archive_device_or_409(device)
+    except HTTPException as exc:
+        return templates.TemplateResponse(
+            request,
+            "message.html",
+            {
+                "title": "Удаление недоступно",
+                "message": exc.detail,
+                "link": f"/devices/{device_id}",
+            },
+            status_code=exc.status_code,
+        )
+    device.archived_at = datetime.now(UTC)
+    device.updated_at = datetime.now(UTC)
+    device.token_hash = hash_token(secrets.token_urlsafe(48))
+    audit(
+        db,
+        user.id,
+        "device.archive",
+        "device",
+        str(device.id),
+        {"source": "web"},
+    )
+    db.commit()
     return RedirectResponse("/devices", status_code=303)
 
 

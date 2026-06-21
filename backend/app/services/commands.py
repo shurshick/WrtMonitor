@@ -17,6 +17,9 @@ ALLOWED_COMMANDS = {
     "wifi.set_password",
     "network.interfaces",
     "agent.disconnect",
+    "agent.update",
+    "agent.rollback",
+    "agent.set_auto_update",
 }
 
 
@@ -35,6 +38,8 @@ def build_command_payload_from_web_form(
         if len(wifi_password) < 8:
             raise ValueError("Wi-Fi password must contain at least 8 characters")
         return {"key": wifi_password}
+    if command_type == "agent.set_auto_update":
+        return {"enabled": enabled.lower() == "true"}
     return {}
 
 

@@ -46,6 +46,11 @@ class WrtMonitorApi(private val serverUrl: String, private val accessToken: Stri
         if (status !in 200..299) throw ApiHttpException(status, "HTTP $status")
         JSONObject(response).optString("status", "disconnecting")
     }.fold({ ApiResult.Success(it) }, ::toApiError)
+    fun archiveDevice(deviceId: String): ApiResult<String> = runCatching {
+        val (status, response) = request("/api/v1/devices/$deviceId/archive", "POST", JSONObject())
+        if (status !in 200..299) throw ApiHttpException(status, "HTTP $status")
+        JSONObject(response).optString("status", "archived")
+    }.fold({ ApiResult.Success(it) }, ::toApiError)
 
     private fun toApiError(error: Throwable): ApiResult.Error {
         val http = error as? ApiHttpException

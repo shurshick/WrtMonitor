@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -43,6 +42,7 @@ import ru.wrtmonitor.app.viewmodel.DevicesUiState
 fun DeviceListScreen(
     serverUrl: String,
     accessToken: String,
+    refreshNonce: Int,
     modifier: Modifier = Modifier,
     onOpenDevice: (DeviceDto) -> Unit,
     onSessionExpired: () -> Unit,
@@ -50,59 +50,160 @@ fun DeviceListScreen(
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf(DevicesUiState(loading = true)) }
     var disconnectTarget by remember { mutableStateOf<DeviceDto?>(null) }
+    var archiveTarget by remember { mutableStateOf<DeviceDto?>(null) }
     var actionError by remember { mutableStateOf("") }
+
     fun refresh() {
         state = state.copy(loading = true, error = null)
+        actionError = ""
         scope.launch {
-            when (val result = withContext(Dispatchers.IO) { WrtMonitorApi(serverUrl, accessToken).getDevices() }) {
+            when (val result = withContext(Dispatchers.IO) {
+                WrtMonitorApi(serverUrl, accessToken).getDevices()
+            }) {
                 is ApiResult.Success -> state = DevicesUiState(devices = result.data)
-                is ApiResult.Error -> if (result.isUnauthorized()) onSessionExpired() else state = DevicesUiState(error = result.message)
+                is ApiResult.Error -> {
+                    if (result.isUnauthorized()) onSessionExpired()
+                    else state = DevicesUiState(error = result.message)
+                }
             }
         }
     }
+
     fun disconnect(device: DeviceDto) {
         scope.launch {
-            when (val result = withContext(Dispatchers.IO) { WrtMonitorApi(serverUrl, accessToken).disconnectDevice(device.id) }) {
+            when (val result = withContext(Dispatchers.IO) {
+                WrtMonitorApi(serverUrl, accessToken).disconnectDevice(device.id)
+            }) {
                 is ApiResult.Success -> refresh()
                 is ApiResult.Error -> if (result.isUnauthorized()) onSessionExpired() else actionError = result.message
             }
         }
     }
-    LaunchedEffect(serverUrl, accessToken) { refresh() }
+
+    fun archive(device: DeviceDto) {
+        scope.launch {
+            when (val result = withContext(Dispatchers.IO) {
+                WrtMonitorApi(serverUrl, accessToken).archiveDevice(device.id)
+            }) {
+                is ApiResult.Success -> refresh()
+                is ApiResult.Error -> if (result.isUnauthorized()) onSessionExpired() else actionError = result.message
+            }
+        }
+    }
+
+    LaunchedEffect(serverUrl, accessToken, refreshNonce) { refresh() }
+
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(stringResource(R.string.routers), style = MaterialTheme.typography.titleLarge)
             Button({ refresh() }, enabled = !state.loading) { Text(stringResource(R.string.refresh)) }
         }
-        if (actionError.isNotBlank()) Text(actionError, color = MaterialTheme.colorScheme.error)
+        if (actionError.isNotBlank()) {
+            Text(actionError, color = MaterialTheme.colorScheme.error)
+        }
         when {
-            state.loading -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            state.error != null -> Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { Text(stringResource(R.string.load_error)); Text(state.error.orEmpty()); Button({ refresh() }) { Text(stringResource(R.string.refresh)) } } }
-            state.devices.isEmpty() -> Card(Modifier.fillMaxWidth()) { Text(stringResource(R.string.no_routers), Modifier.padding(16.dp)) }
-            else -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) { items(state.devices, key = { it.id }) { device -> DeviceListCard(device, onOpenDevice) { disconnectTarget = device } } }
+            state.loading -> Box(
+                Modifier.fillMaxWidth().padding(24.dp),
+                contentAlignment = Alignment.Center,
+            ) { CircularProgressIndicator() }
+            state.error != null -> Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.load_error))
+                    Text(state.error.orEmpty())
+                    Button({ refresh() }) { Text(stringResource(R.string.refresh)) }
+                }
+            }
+            state.devices.isEmpty() -> Card(Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.no_routers), Modifier.padding(16.dp))
+            }
+            else -> LazyColumn(
+                Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(state.devices, key = { it.id }) { device ->
+                    DeviceListCard(
+                        device = device,
+                        onOpenDevice = onOpenDevice,
+                        onDisconnect = { disconnectTarget = device },
+                        onArchive = { archiveTarget = device },
+                    )
+                }
+            }
         }
     }
+
     disconnectTarget?.let { device ->
         AlertDialog(
             onDismissRequest = { disconnectTarget = null },
             title = { Text("Отключить роутер?") },
             text = { Text("Агент завершит работу на роутере. Для повторного подключения потребуется заново запустить установку агента.") },
-            confirmButton = { TextButton(onClick = { disconnectTarget = null; disconnect(device) }) { Text("Отключить") } },
-            dismissButton = { TextButton(onClick = { disconnectTarget = null }) { Text(stringResource(R.string.cancel)) } }
+            confirmButton = {
+                TextButton(onClick = {
+                    disconnectTarget = null
+                    disconnect(device)
+                }) { Text("Отключить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { disconnectTarget = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    archiveTarget?.let { device ->
+        AlertDialog(
+            onDismissRequest = { archiveTarget = null },
+            title = { Text("Удалить из списка?") },
+            text = { Text("Этот роутер уже отключён. История telemetry и команд останется на сервере, но для повторного подключения агент нужно будет зарегистрировать заново.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    archiveTarget = null
+                    archive(device)
+                }) { Text("Удалить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { archiveTarget = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
         )
     }
 }
 
 @Composable
-private fun DeviceListCard(device: DeviceDto, onOpenDevice: (DeviceDto) -> Unit, onDisconnect: () -> Unit) {
+private fun DeviceListCard(
+    device: DeviceDto,
+    onOpenDevice: (DeviceDto) -> Unit,
+    onDisconnect: () -> Unit,
+    onArchive: () -> Unit,
+) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(device.name.ifBlank { device.hostname.ifBlank { stringResource(R.string.router) } }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                device.name.ifBlank { device.hostname.ifBlank { stringResource(R.string.router) } },
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             InfoRow(stringResource(R.string.hostname), device.hostname, stringResource(R.string.no_data))
             InfoRow(stringResource(R.string.firmware), device.firmware, stringResource(R.string.no_data))
             InfoRow(stringResource(R.string.status), device.status, stringResource(R.string.no_data))
             Button({ onOpenDevice(device) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.open)) }
-            if (device.status !in setOf("disabled", "disconnecting")) TextButton(onClick = onDisconnect, modifier = Modifier.align(Alignment.End)) { Text("Отключить", color = MaterialTheme.colorScheme.error) }
+            if (device.status !in setOf("disabled", "disconnecting")) {
+                TextButton(onClick = onDisconnect, modifier = Modifier.align(Alignment.End)) {
+                    Text("Отключить", color = MaterialTheme.colorScheme.error)
+                }
+            }
+            if (device.status == "disabled") {
+                TextButton(onClick = onArchive, modifier = Modifier.align(Alignment.End)) {
+                    Text("Удалить из списка", color = MaterialTheme.colorScheme.error)
+                }
+            }
         }
     }
 }

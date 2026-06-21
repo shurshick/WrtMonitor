@@ -22,7 +22,10 @@ def register_agent(
     payload: AgentRegisterRequest, db: Session = Depends(get_db)
 ) -> dict[str, str]:
     existing = db.scalars(
-        select(Device).where(Device.token_hash == hash_token(payload.device_token))
+        select(Device).where(
+            Device.token_hash == hash_token(payload.device_token),
+            Device.archived_at.is_(None),
+        )
     ).first()
     if existing:
         return {"device_id": str(existing.id)}

@@ -27,6 +27,7 @@ ensure_dependencies() {
   add_missing_package jsonfilter jsonfilter
   add_missing_package uci uci
   add_missing_package ubus ubus
+  add_missing_package sha256sum coreutils-sha256sum
   if ! has_ca_bundle; then
     missing_packages="$missing_packages ca-bundle"
   fi
@@ -42,7 +43,7 @@ ensure_dependencies() {
     opkg install $missing_packages
   fi
 
-  for command_name in curl jsonfilter uci ubus; do
+  for command_name in curl jsonfilter uci ubus sha256sum; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
       echo "Required dependency is unavailable after installation: $command_name" >&2
       exit 1
@@ -172,6 +173,9 @@ config wrtmonitor 'main'
 	option name '$NAME'
 	option interval '60'
 	option auto_update '1'
+	option update_interval_hours '6'
+	option update_channel 'stable'
+	option allow_downgrade '0'
 EOF
 
 /etc/init.d/wrtmonitor enable

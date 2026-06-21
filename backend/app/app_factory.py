@@ -3,6 +3,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import APP_NAME, APP_VERSION, load_settings
 from .db import check_database, init_db
+from .services.openwrt_downloads import ensure_openwrt_download_metadata
 from .web.security_headers import SecurityHeadersMiddleware
 
 
@@ -25,6 +26,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     def startup() -> None:
+        ensure_openwrt_download_metadata()
         init_db()
         check_database()
 

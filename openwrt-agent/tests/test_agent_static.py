@@ -66,16 +66,20 @@ def test_agent_can_update_itself_from_its_configured_server():
     source = agent_source()
 
     assert "check_for_update()" in source
-    assert '"$(server_url)/downloads/openwrt"' in source
-    assert 'curl -fsS --connect-timeout 10 --max-time 60' in source
-    assert "sh -n \"$update_agent\"" in source
-    assert "/etc/init.d/wrtmonitor restart" in source
+    assert "update_source()" in source
+    assert "SHA256SUMS.txt" in source
+    assert "agent-version.txt" in source
+    assert "verify_checksum()" in source
+    assert "prepare_backup()" in source
+    assert "perform_rollback()" in source
+    assert "UPDATE_LOCK_FILE=" in source
+    assert "update-status" in source
 
 
 def test_agent_hardening_is_present():
     source = agent_source()
 
-    assert 'LOCK_DIR="/tmp/wrtmonitor-agent.lock"' in source
+    assert 'RUN_LOCK_DIR="/tmp/wrtmonitor-agent.lock"' in source
     assert "--connect-timeout" in source
     assert "--max-time" in source
     assert "masked_token()" in source
@@ -89,5 +93,5 @@ def test_installer_bootstraps_runtime_dependencies():
     assert "ensure_dependencies()" in source
     assert "opkg update" in source
     assert "opkg install $missing_packages" in source
-    for dependency in ("curl", "jsonfilter", "ca-bundle", "uci", "ubus"):
+    for dependency in ("curl", "jsonfilter", "ca-bundle", "uci", "ubus", "coreutils-sha256sum"):
         assert dependency in source

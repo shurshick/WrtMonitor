@@ -13,10 +13,14 @@
     {% if device.status not in ['disabled', 'disconnecting'] %}
     <form method="post" action="/devices/{{ device.id }}/disconnect"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button--danger" type="submit">Отключить</button></form>
     {% endif %}
+    {% if device.status == 'disabled' %}
+    <form method="post" action="/devices/{{ device.id }}/archive" onsubmit="return confirm('Удалить этот отключённый роутер из списка? История telemetry и команд останется в базе, но для повторного подключения нужно заново установить агент.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button--danger" type="submit">Удалить из списка</button></form>
+    {% endif %}
   </div>
 </div>
 <div class="grid">
   {% include "partials/telemetry.html" %}
+  {% include "partials/agent.html" %}
   {% include "partials/wifi.html" %}
   {% include "partials/network.html" %}
   {% include "partials/system.html" %}
@@ -24,7 +28,7 @@
 <section class="stack section">
   {% include "partials/commands.html" %}
   <div>
-    <h2>Исходная телеметрия</h2>
+    <h2>Исходная telemetry</h2>
     <pre class="raw-telemetry">{{ raw_telemetry }}</pre>
   </div>
 </section>

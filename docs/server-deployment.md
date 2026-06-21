@@ -10,7 +10,7 @@ openssl rand -base64 32
 
 `WRTMONITOR_PUBLIC_SERVER_URL` должен содержать внешний HTTPS URL сервера. Endpoint `/health/config` проверяет только факт настройки и никогда не возвращает секреты.
 
-Документ актуален для `wrtmonitor v0.1.0-test.15`.
+Документ актуален для `WrtMonitor v0.1.1-rc7`.
 
 Сервер состоит из двух контейнеров:
 
@@ -68,12 +68,12 @@ WRTMONITOR_ENABLE_API_DOCS=false
 ## TrueNAS Custom App
 
 1. Откройте релиз:
-   [v0.1.0-test.15](https://github.com/shurshick/wrtmonitor/releases/tag/v0.1.0-test.15)
+   [v0.1.1-rc7-agent-update-safety](https://github.com/shurshick/wrtmonitor/releases/tag/v0.1.1-rc7-agent-update-safety)
 
 2. Скачайте файл:
 
    ```text
-   wrtmonitor-truenas-v0.1.0-test.15.yaml
+   wrtmonitor-truenas-v0.1.1-rc7.yaml
    ```
 
 3. При необходимости скачайте и проверьте checksums:

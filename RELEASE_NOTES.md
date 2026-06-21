@@ -1,19 +1,19 @@
-# v0.1.1-rc2-architecture-refactor
+# v0.1.1-rc7-agent-update-safety
 
-## Изменения релиза
+## Что вошло в релиз
 
-- Backend переведён на фабрику приложения: `main.py` стал тонким ASGI entrypoint, Web UI и API подключаются через отдельные routers.
-- Логика авторизации, настройки сервера, аудита, команд и telemetry вынесена в `services/`.
-- Web UI полностью использует Jinja2 templates и частичные шаблоны; CSS остаётся в статическом файле. CSRF и security headers сохранены.
-- Android `MainActivity` стал минимальным entrypoint; добавлены API-слой, DTO, единое хранилище сессии, UI state и выделенные ключевые экраны.
-- Сохранены API URLs, PostgreSQL-схема, протокол OpenWrt agent, установка APK поверх предыдущей версии и TrueNAS deployment.
-- CI дополнен обязательной проверкой `ruff format --check` наряду с backend, agent и Android проверками.
+- безопасное обновление OpenWrt agent через `SHA256SUMS.txt`;
+- `agent-version.txt` и серверная раздача актуальных agent-файлов через `/downloads/openwrt/`;
+- backup и rollback agent при ошибке обновления;
+- защита от параллельных обновлений и от автоматического downgrade;
+- `wrtmonitor-agent update-status`, `wrtmonitor-agent rollback`, `--force`, `--allow-downgrade`;
+- telemetry-блок `agent` с версией, статусом auto-update и результатом последнего обновления;
+- раздел `Agent` в Web UI и Android;
+- soft-archive для `disabled` устройств в Web UI, Android и backend API.
 
-## Артефакты
+## Артефакты релиза
 
-- `wrtmonitor-truenas-v0.1.1-rc2.yaml`
-- `wrtmonitor-openwrt-agent-v0.1.1-rc2.tar.gz`
-- `wrtmonitor-android-v0.1.1-rc2-debug.apk`
+- `wrtmonitor-truenas-v0.1.1-rc7.yaml`
+- `wrtmonitor-openwrt-agent-v0.1.1-rc7.tar.gz`
+- `wrtmonitor-android-v0.1.1-rc7-debug.apk`
 - `SHA256SUMS.txt`
-
-Перед установкой артефактов проверяйте контрольные суммы из `SHA256SUMS.txt`.

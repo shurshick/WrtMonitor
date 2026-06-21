@@ -60,6 +60,8 @@ def agent_telemetry(
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     device = device_from_token(authorization, db)
+    if device.archived_at is not None:
+        raise HTTPException(status_code=403, detail="Device is archived")
     if device.id != payload.device_id:
         raise HTTPException(status_code=403, detail="Device token mismatch")
     now = datetime.now(UTC)

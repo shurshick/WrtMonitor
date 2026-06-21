@@ -1,4 +1,5 @@
 import os
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
@@ -20,6 +21,7 @@ from backend.app.models import (
     User,
 )
 from backend.app.main import app
+from backend.app.services.openwrt_downloads import ensure_openwrt_download_metadata
 from backend.app.services.commands import ALLOWED_COMMANDS, public_command_payload
 from backend.app.schemas import SetupRequest
 
@@ -28,6 +30,9 @@ def test_allowed_commands_are_explicit():
     assert "router.reboot" in ALLOWED_COMMANDS
     assert "agent.disconnect" in ALLOWED_COMMANDS
     assert "wifi.set_password" in ALLOWED_COMMANDS
+    assert "agent.update" in ALLOWED_COMMANDS
+    assert "agent.rollback" in ALLOWED_COMMANDS
+    assert "agent.set_auto_update" in ALLOWED_COMMANDS
     assert "shell.exec" not in ALLOWED_COMMANDS
 
 
@@ -52,6 +57,31 @@ def test_setup_status_endpoint_shape(monkeypatch):
         app.dependency_overrides.clear()
     assert response.status_code == 200
     assert response.json()["setup_required"] is True
+
+
+def test_health_config_exposes_openwrt_downloads_without_secrets():
+    client = TestClient(app)
+    response = client.get("/health/config")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["openwrt_downloads_enabled"] is True
+    assert payload["openwrt_downloads_path"] == "/downloads/openwrt/"
+    assert "jwt_secret" not in payload
+
+
+def test_openwrt_downloads_publish_metadata_files():
+    ensure_openwrt_download_metadata()
+    client = TestClient(app)
+    version_response = client.get("/downloads/openwrt/agent-version.txt")
+    sums_response = client.get("/downloads/openwrt/SHA256SUMS.txt")
+
+    assert version_response.status_code == 200
+    assert sums_response.status_code == 200
+    assert "wrtmonitor-agent" in sums_response.text
+    assert "wrtmonitor.init" in sums_response.text
+    assert "install-openwrt.sh" in sums_response.text
+    assert "agent-version.txt" in sums_response.text
 
 
 def test_complete_setup_flushes_user_before_audit(monkeypatch):
@@ -147,6 +177,75 @@ def test_devices_page_lists_devices(monkeypatch):
     assert response.status_code == 200
     assert "HomeRouter" in response.text
     assert "online" in response.text
+
+
+def test_device_page_renders_agent_update_status(monkeypatch):
+    device = Device(
+        id="a0f55bcd-3a85-4d94-8a50-f62e463682b8",
+        name="HomeRouter",
+        hostname="OpenWrt",
+        model="VirtualBox",
+        firmware="OpenWrt",
+        token_hash="token",
+        status="online",
+        last_seen_at=None,
+        created_at=None,
+        updated_at=None,
+    )
+    telemetry = DeviceTelemetry(
+        device_id=device.id,
+        payload={
+            "agent": {
+                "version": "0.1.1-rc7",
+                "auto_update_enabled": True,
+                "available_version": "0.1.1-rc7",
+                "last_update_status": "success",
+            }
+        },
+        created_at=datetime.now(UTC),
+    )
+
+    class FakeScalars:
+        def __init__(self, items):
+            self._items = items
+
+        def first(self):
+            return self._items[0] if self._items else None
+
+        def all(self):
+            return self._items
+
+    class FakeSession:
+        def __init__(self):
+            self.calls = 0
+
+        def scalars(self, statement):
+            self.calls += 1
+            if self.calls == 1:
+                return FakeScalars([telemetry])
+            return FakeScalars([])
+
+    def fake_db():
+        yield FakeSession()
+
+    monkeypatch.setattr(main, "is_setup_required", lambda db, config: False)
+    monkeypatch.setattr(
+        main, "web_user_from_session", lambda session_token, config, db: object()
+    )
+    monkeypatch.setattr(main, "get_user_device_or_404", lambda db, user, device_id: device)
+    app.dependency_overrides[get_db] = fake_db
+    client = TestClient(app)
+    try:
+        response = client.get(
+            f"/devices/{device.id}", cookies={"wrtmonitor_session": "token"}
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert "Агент" in response.text
+    assert "0.1.1-rc7" in response.text
+    assert "success" in response.text
 
 
 def test_devices_page_requires_web_session(monkeypatch):
@@ -260,6 +359,17 @@ def test_router_registration_telemetry_and_latest_api_e2e():
             "radios": [{"name": "radio0", "up": True, "channel": "6"}],
         },
         "network": {"interfaces": [{"name": "lan", "up": True}]},
+        "agent": {
+            "version": "0.1.1-rc7",
+            "auto_update_enabled": True,
+            "last_update_status": "success",
+            "last_update_error": "",
+            "last_update_check": "2026-06-21T10:00:00Z",
+            "last_successful_update": "2026-06-21T10:00:00Z",
+            "backup_available": True,
+            "available_version": "0.1.1-rc7",
+            "update_source": "https://monitor.example.ru/downloads/openwrt",
+        },
     }
     for index in range(105):
         telemetry_response = client.post(
@@ -277,6 +387,7 @@ def test_router_registration_telemetry_and_latest_api_e2e():
     assert latest["device_id"] == device_id
     assert latest["telemetry"]["system"]["uptime"] == 123
     assert latest["telemetry"]["wifi"]["radios"][0]["name"] == "radio0"
+    assert latest["telemetry"]["agent"]["version"] == "0.1.1-rc7"
     assert latest["telemetry"]["sequence"] == 104
     assert latest["age_seconds"] >= 0
     assert latest["is_stale"] is False
@@ -292,3 +403,100 @@ def test_router_registration_telemetry_and_latest_api_e2e():
             .count()
         )
     assert count == 100
+
+
+def test_disabled_device_can_be_archived_but_online_device_cannot():
+    if not os.getenv("WRTMONITOR_DATABASE_URL"):
+        pytest.skip("PostgreSQL E2E test requires WRTMONITOR_DATABASE_URL")
+    clear_database()
+    config = load_settings()
+    client = TestClient(app)
+
+    setup_response = client.post(
+        "/api/v1/setup/complete",
+        json={
+            "username": "admin@example.com",
+            "password": "secret-password",
+            "password_confirm": "secret-password",
+            "server_url": "http://127.0.0.1:8080"
+            if config.allow_insecure_local
+            else "https://monitor.example.ru",
+        },
+    )
+    assert setup_response.status_code == 200
+
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"username": "admin@example.com", "password": "secret-password"},
+    )
+    access_token = login_response.json()["access_token"]
+    admin_headers = {"Authorization": f"Bearer {access_token}"}
+
+    provision_response = client.post(
+        "/api/v1/devices/provision",
+        headers=admin_headers,
+        json={
+            "name": "ArchiveRouter",
+            "hostname": "OpenWrt",
+            "model": "VirtualBox",
+            "firmware": "OpenWrt 22.03.5",
+        },
+    )
+    device_id = provision_response.json()["device_id"]
+    device_token = provision_response.json()["device_token"]
+    agent_headers = {"Authorization": f"Bearer {device_token}"}
+
+    online_response = client.post(
+        "/api/v1/agent/telemetry",
+        headers=agent_headers,
+        json={"device_id": device_id, "telemetry": {"system": {"uptime": 1}}},
+    )
+    assert online_response.status_code == 200
+    conflict_response = client.post(
+        f"/api/v1/devices/{device_id}/archive",
+        headers=admin_headers,
+    )
+    assert conflict_response.status_code == 409
+
+    disconnect_response = client.post(
+        f"/api/v1/devices/{device_id}/disconnect",
+        headers=admin_headers,
+    )
+    assert disconnect_response.status_code == 200
+    command_id = disconnect_response.json()["command_id"]
+
+    result_response = client.post(
+        f"/api/v1/agent/commands/{command_id}/result",
+        headers=agent_headers,
+        json={"status": "done", "result": {"message": "agent disabled"}},
+    )
+    assert result_response.status_code == 200
+
+    archive_response = client.post(
+        f"/api/v1/devices/{device_id}/archive",
+        headers=admin_headers,
+    )
+    assert archive_response.status_code == 200
+    assert archive_response.json()["status"] == "archived"
+
+    archived_telemetry_response = client.post(
+        "/api/v1/agent/telemetry",
+        headers=agent_headers,
+        json={"device_id": device_id, "telemetry": {"system": {"uptime": 2}}},
+    )
+    assert archived_telemetry_response.status_code in {401, 403}
+
+    list_response = client.get("/api/v1/devices", headers=admin_headers)
+    assert list_response.status_code == 200
+    assert all(device["id"] != device_id for device in list_response.json())
+
+    session_factory = sessionmaker(
+        bind=get_engine(), autoflush=False, expire_on_commit=False
+    )
+    with session_factory() as session:
+        telemetry_count = (
+            session.query(DeviceTelemetry)
+            .filter(DeviceTelemetry.device_id == UUID(device_id))
+            .count()
+        )
+    assert telemetry_count == 1

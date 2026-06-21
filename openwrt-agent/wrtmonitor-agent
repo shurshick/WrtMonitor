@@ -2,10 +2,16 @@
 set -eu
 
 CONFIG="wrtmonitor.main"
-LOCK_DIR="/tmp/wrtmonitor-agent.lock"
-AGENT_VERSION="0.1.1-rc6"
-UPDATE_CHECK_INTERVAL="21600"
-AGENT_UPDATED=0
+RUN_LOCK_DIR="/tmp/wrtmonitor-agent.lock"
+UPDATE_LOCK_FILE="/tmp/wrtmonitor-agent-update.lock"
+UPDATE_LOCK_STALE_SECONDS="1800"
+STATUS_DIR="/etc/wrtmonitor"
+BACKUP_DIR="$STATUS_DIR/backup"
+STATUS_FILE="$STATUS_DIR/update-status.env"
+AGENT_VERSION="0.1.1-rc7"
+DEFAULT_UPDATE_INTERVAL_HOURS="6"
+PENDING_AGENT_EXEC=0
+PENDING_TARGET_VERSION=""
 
 cfg() {
   uci -q get "$CONFIG.$1" 2>/dev/null || true
@@ -16,6 +22,95 @@ device_token() { cfg device_token; }
 device_id() { cfg device_id; }
 agent_enabled() { [ "$(cfg enabled)" = "1" ]; }
 auto_update_enabled() { [ "$(cfg auto_update)" != "0" ]; }
+allow_downgrade_enabled() { [ "$(cfg allow_downgrade)" = "1" ]; }
+update_source() { printf '%s/downloads/openwrt' "$(server_url)"; }
+
+log_notice() {
+  logger -t wrtmonitor "$1"
+}
+
+iso_now() {
+  date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo ""
+}
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+shell_escape_single() {
+  printf '%s' "$1" | sed "s/'/'\"'\"'/g"
+}
+
+ensure_state_dirs() {
+  mkdir -p "$STATUS_DIR" "$BACKUP_DIR"
+}
+
+backup_available() {
+  [ -r "$BACKUP_DIR/wrtmonitor-agent.previous" ] && [ -r "$BACKUP_DIR/wrtmonitor.init.previous" ]
+}
+
+load_status() {
+  CURRENT_VERSION="$AGENT_VERSION"
+  AVAILABLE_VERSION=""
+  AUTO_UPDATE_STATUS="$(cfg auto_update)"
+  LAST_UPDATE_CHECK=""
+  LAST_UPDATE_STATUS=""
+  LAST_UPDATE_ERROR=""
+  LAST_SUCCESSFUL_UPDATE=""
+  BACKUP_AVAILABLE="0"
+  UPDATE_SOURCE_VALUE="$(update_source)"
+  if [ -r "$STATUS_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "$STATUS_FILE"
+  fi
+  if backup_available; then
+    BACKUP_AVAILABLE="1"
+  else
+    BACKUP_AVAILABLE="0"
+  fi
+  CURRENT_VERSION="$AGENT_VERSION"
+  AUTO_UPDATE_STATUS="enabled"
+  if ! auto_update_enabled; then
+    AUTO_UPDATE_STATUS="disabled"
+  fi
+  UPDATE_SOURCE_VALUE="$(update_source)"
+}
+
+write_status() {
+  status_value="$1"
+  error_value="$2"
+  available_value="$3"
+  check_value="$4"
+  success_value="$5"
+  ensure_state_dirs
+  backup_value="0"
+  if backup_available; then
+    backup_value="1"
+  fi
+  {
+    printf "CURRENT_VERSION='%s'\n" "$(shell_escape_single "$AGENT_VERSION")"
+    printf "AVAILABLE_VERSION='%s'\n" "$(shell_escape_single "$available_value")"
+    printf "AUTO_UPDATE_STATUS='%s'\n" "$(shell_escape_single "$(auto_update_enabled && printf enabled || printf disabled)")"
+    printf "LAST_UPDATE_CHECK='%s'\n" "$(shell_escape_single "$check_value")"
+    printf "LAST_UPDATE_STATUS='%s'\n" "$(shell_escape_single "$status_value")"
+    printf "LAST_UPDATE_ERROR='%s'\n" "$(shell_escape_single "$error_value")"
+    printf "LAST_SUCCESSFUL_UPDATE='%s'\n" "$(shell_escape_single "$success_value")"
+    printf "BACKUP_AVAILABLE='%s'\n" "$(shell_escape_single "$backup_value")"
+    printf "UPDATE_SOURCE_VALUE='%s'\n" "$(shell_escape_single "$(update_source)")"
+  } >"$STATUS_FILE"
+}
+
+remember_update_result() {
+  status_value="$1"
+  error_value="$2"
+  available_value="$3"
+  load_status
+  last_success="$LAST_SUCCESSFUL_UPDATE"
+  if [ "$status_value" = "success" ]; then
+    last_success="$(iso_now)"
+  fi
+  write_status "$status_value" "$error_value" "$available_value" "$(iso_now)" "$last_success"
+}
 
 api() {
   method="$1"
@@ -34,11 +129,39 @@ api() {
 }
 
 acquire_lock() {
-  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-    logger -t wrtmonitor "agent is already running"
+  if ! mkdir "$RUN_LOCK_DIR" 2>/dev/null; then
+    log_notice "agent is already running"
     return 1
   fi
-  trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
+  trap 'rmdir "$RUN_LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
+}
+
+release_run_lock() {
+  rmdir "$RUN_LOCK_DIR" 2>/dev/null || true
+  trap - EXIT INT TERM
+}
+
+acquire_update_lock() {
+  now="$(date +%s 2>/dev/null || echo 0)"
+  if [ -r "$UPDATE_LOCK_FILE" ]; then
+    old_pid="$(awk -F= '/^pid=/{print $2}' "$UPDATE_LOCK_FILE" 2>/dev/null | head -n 1)"
+    old_started="$(awk -F= '/^started=/{print $2}' "$UPDATE_LOCK_FILE" 2>/dev/null | head -n 1)"
+    age=$((now - ${old_started:-0}))
+    if [ -n "${old_pid:-}" ] && kill -0 "$old_pid" 2>/dev/null && [ "$age" -lt "$UPDATE_LOCK_STALE_SECONDS" ]; then
+      remember_update_result "skipped" "Update already running" "$(load_status; printf '%s' "$AVAILABLE_VERSION")"
+      log_notice "Update already running"
+      return 1
+    fi
+    rm -f "$UPDATE_LOCK_FILE"
+  fi
+  {
+    printf 'pid=%s\n' "$$"
+    printf 'started=%s\n' "$now"
+  } >"$UPDATE_LOCK_FILE"
+}
+
+release_update_lock() {
+  rm -f "$UPDATE_LOCK_FILE"
 }
 
 masked_token() {
@@ -52,53 +175,300 @@ masked_token() {
 }
 
 debug() {
+  load_status
   printf 'server_url=%s\n' "$(server_url)"
   printf 'device_id=%s\n' "$(device_id)"
   printf 'device_token=%s\n' "$(masked_token)"
   printf 'interval=%s\n' "$(cfg interval)"
-  printf 'auto_update=%s\n' "$(cfg auto_update)"
+  printf 'auto_update=%s\n' "$AUTO_UPDATE_STATUS"
+  printf 'agent_version=%s\n' "$CURRENT_VERSION"
+  printf 'available_version=%s\n' "$AVAILABLE_VERSION"
+  printf 'last_update_status=%s\n' "$LAST_UPDATE_STATUS"
+  printf 'last_update_error=%s\n' "$LAST_UPDATE_ERROR"
+}
+
+parse_version_parts() {
+  printf '%s' "$1" | sed -n 's/^v\{0,1\}\([0-9][0-9]*\)\.\([0-9][0-9]*\)\.\([0-9][0-9]*\)-rc\([0-9][0-9]*\).*$/\1 \2 \3 \4/p'
+}
+
+compare_versions() {
+  left="$(parse_version_parts "$1")"
+  right="$(parse_version_parts "$2")"
+  if [ -z "$left" ] || [ -z "$right" ]; then
+    if [ "$1" = "$2" ]; then
+      printf '0'
+    elif [ "$1" \> "$2" ]; then
+      printf '1'
+    else
+      printf '%s' '-1'
+    fi
+    return
+  fi
+  left_major="$(printf '%s' "$left" | awk '{print $1}')"
+  left_minor="$(printf '%s' "$left" | awk '{print $2}')"
+  left_patch="$(printf '%s' "$left" | awk '{print $3}')"
+  left_rc="$(printf '%s' "$left" | awk '{print $4}')"
+  right_major="$(printf '%s' "$right" | awk '{print $1}')"
+  right_minor="$(printf '%s' "$right" | awk '{print $2}')"
+  right_patch="$(printf '%s' "$right" | awk '{print $3}')"
+  right_rc="$(printf '%s' "$right" | awk '{print $4}')"
+  for part in major minor patch rc; do
+    eval "left_value=\$left_$part"
+    eval "right_value=\$right_$part"
+    if [ "$left_value" -gt "$right_value" ]; then
+      printf '1'
+      return
+    fi
+    if [ "$left_value" -lt "$right_value" ]; then
+      printf '%s' '-1'
+      return
+    fi
+  done
+  printf '0'
+}
+
+update_interval_seconds() {
+  hours="$(cfg update_interval_hours)"
+  case "$hours" in
+    ""|*[!0-9]*) hours="$DEFAULT_UPDATE_INTERVAL_HOURS" ;;
+  esac
+  if [ "$hours" -le 0 ]; then
+    hours="$DEFAULT_UPDATE_INTERVAL_HOURS"
+  fi
+  printf '%s' $((hours * 3600))
+}
+
+download_file() {
+  url="$1"
+  destination="$2"
+  curl -fsS --connect-timeout 10 --max-time 60 -o "$destination" "$url"
+}
+
+checksum_for() {
+  sha256sum "$1" | awk '{print $1}'
+}
+
+verify_checksum() {
+  sums_file="$1"
+  file_path="$2"
+  filename="$3"
+  expected="$(awk -v name="$filename" '$2 == name {print $1}' "$sums_file" | head -n 1)"
+  if [ -z "$expected" ]; then
+    return 1
+  fi
+  actual="$(checksum_for "$file_path")"
+  [ "$actual" = "$expected" ]
+}
+
+remote_version_from_tmp() {
+  tr -d '\r\n' <"$1/agent-version.txt"
+}
+
+prepare_backup() {
+  new_version="$1"
+  ensure_state_dirs
+  cp /usr/bin/wrtmonitor-agent "$BACKUP_DIR/wrtmonitor-agent.previous"
+  cp /etc/init.d/wrtmonitor "$BACKUP_DIR/wrtmonitor.init.previous"
+  printf '%s\n' "$AGENT_VERSION" >"$BACKUP_DIR/VERSION.previous"
+  {
+    printf 'created_at=%s\n' "$(iso_now)"
+    printf 'previous_version=%s\n' "$AGENT_VERSION"
+    printf 'new_version=%s\n' "$new_version"
+    printf 'reason=pre-update-backup\n'
+  } >"$BACKUP_DIR/backup-info.txt"
+}
+
+restore_backup_files() {
+  backup_available || return 1
+  sh -n "$BACKUP_DIR/wrtmonitor-agent.previous"
+  sh -n "$BACKUP_DIR/wrtmonitor.init.previous"
+  cp "$BACKUP_DIR/wrtmonitor-agent.previous" /usr/bin/wrtmonitor-agent
+  chmod 0755 /usr/bin/wrtmonitor-agent
+  cp "$BACKUP_DIR/wrtmonitor.init.previous" /etc/init.d/wrtmonitor
+  chmod 0755 /etc/init.d/wrtmonitor
+}
+
+apply_downloaded_files() {
+  tmp_dir="$1"
+  cp "$tmp_dir/wrtmonitor-agent" /usr/bin/wrtmonitor-agent.new
+  chmod 0755 /usr/bin/wrtmonitor-agent.new
+  mv /usr/bin/wrtmonitor-agent.new /usr/bin/wrtmonitor-agent
+  cp "$tmp_dir/wrtmonitor.init" /etc/init.d/wrtmonitor.new
+  chmod 0755 /etc/init.d/wrtmonitor.new
+  mv /etc/init.d/wrtmonitor.new /etc/init.d/wrtmonitor
+}
+
+validate_download_set() {
+  tmp_dir="$1"
+  for filename in wrtmonitor-agent wrtmonitor.init install-openwrt.sh agent-version.txt; do
+    verify_checksum "$tmp_dir/SHA256SUMS.txt" "$tmp_dir/$filename" "$filename" || return 1
+  done
+  sh -n "$tmp_dir/wrtmonitor-agent"
+  sh -n "$tmp_dir/wrtmonitor.init"
+  sh -n "$tmp_dir/install-openwrt.sh"
+  remote_version="$(remote_version_from_tmp "$tmp_dir")"
+  [ -n "$remote_version" ] || return 1
+  parsed_version="$(sed -n 's/^AGENT_VERSION="\([^"]*\)".*/\1/p' "$tmp_dir/wrtmonitor-agent" | head -n 1)"
+  [ -n "$parsed_version" ] && [ "$parsed_version" = "$remote_version" ]
+}
+
+stage_update_downloads() {
+  tmp_dir="$1"
+  mkdir -p "$tmp_dir"
+  base="$(update_source)"
+  download_file "$base/wrtmonitor-agent" "$tmp_dir/wrtmonitor-agent"
+  download_file "$base/wrtmonitor.init" "$tmp_dir/wrtmonitor.init"
+  download_file "$base/install-openwrt.sh" "$tmp_dir/install-openwrt.sh"
+  download_file "$base/agent-version.txt" "$tmp_dir/agent-version.txt"
+  download_file "$base/SHA256SUMS.txt" "$tmp_dir/SHA256SUMS.txt"
+}
+
+verify_installed_agent() {
+  expected="$1"
+  installed_version="$(/usr/bin/wrtmonitor-agent version 2>/dev/null || true)"
+  [ -n "$installed_version" ] && [ "$installed_version" = "$expected" ]
+}
+
+handoff_to_updated_agent() {
+  release_run_lock
+  exec /usr/bin/wrtmonitor-agent daemon
+}
+
+restart_service_foreground() {
+  /etc/init.d/wrtmonitor restart >/dev/null 2>&1
+}
+
+perform_rollback() {
+  mode="$1"
+  reason="${2:-manual rollback}"
+  if ! restore_backup_files; then
+    remember_update_result "failed" "rollback unavailable" "$(load_status; printf '%s' "$AVAILABLE_VERSION")"
+    return 1
+  fi
+  remember_update_result "rollback" "$reason" "$AGENT_VERSION"
+  log_notice "agent rollback completed: $reason"
+  PENDING_TARGET_VERSION="$(cat "$BACKUP_DIR/VERSION.previous" 2>/dev/null || echo "$AGENT_VERSION")"
+  PENDING_AGENT_EXEC=1
+  if [ "$mode" = "manual" ]; then
+    restart_service_foreground || return 1
+    PENDING_AGENT_EXEC=0
+  fi
+  return 0
 }
 
 check_for_update() {
-  force="${1:-0}"
-  [ "$force" = "1" ] || auto_update_enabled || return 0
-
-  update_base="$(server_url)/downloads/openwrt"
-  update_agent="/tmp/wrtmonitor-agent-update-$$"
-  update_init="/tmp/wrtmonitor-init-update-$$"
-  rm -f "$update_agent" "$update_init"
-
-  if ! curl -fsS --connect-timeout 10 --max-time 60 -o "$update_agent" "$update_base/wrtmonitor-agent"; then
-    logger -t wrtmonitor "agent update check failed"
-    rm -f "$update_agent" "$update_init"
-    return 1
-  fi
-  remote_version="$(sed -n 's/^AGENT_VERSION="\([^"]*\)".*/\1/p' "$update_agent" | head -n 1)"
-  if [ -z "$remote_version" ]; then
-    logger -t wrtmonitor "agent update has no version"
-    rm -f "$update_agent" "$update_init"
-    return 1
-  fi
-  if [ "$remote_version" = "$AGENT_VERSION" ]; then
-    rm -f "$update_agent" "$update_init"
+  mode="$1"
+  force="${2:-0}"
+  allow_downgrade="${3:-0}"
+  if [ "$mode" = "scheduled" ] && ! auto_update_enabled; then
     return 0
   fi
-  if ! sh -n "$update_agent" || ! curl -fsS --connect-timeout 10 --max-time 60 -o "$update_init" "$update_base/wrtmonitor.init" || ! sh -n "$update_init"; then
-    logger -t wrtmonitor "agent update validation failed"
-    rm -f "$update_agent" "$update_init"
+  acquire_update_lock || return 0
+  tmp_dir="/tmp/wrtmonitor-update.$$"
+  rm -rf "$tmp_dir"
+  mkdir -p "$tmp_dir"
+  if ! stage_update_downloads "$tmp_dir"; then
+    remember_update_result "failed" "download failed" ""
+    log_notice "agent update failed: download failed"
+    rm -rf "$tmp_dir"
+    release_update_lock
     return 1
   fi
+  remote_version="$(remote_version_from_tmp "$tmp_dir")"
+  if ! validate_download_set "$tmp_dir"; then
+    remember_update_result "failed" "checksum or syntax verification failed" "$remote_version"
+    log_notice "agent update failed: checksum or syntax verification failed"
+    rm -rf "$tmp_dir"
+    release_update_lock
+    return 1
+  fi
+  comparison="$(compare_versions "$AGENT_VERSION" "$remote_version")"
+  if [ "$comparison" = "0" ] && [ "$force" != "1" ]; then
+    remember_update_result "skipped" "" "$remote_version"
+    rm -rf "$tmp_dir"
+    release_update_lock
+    return 0
+  fi
+  if [ "$comparison" = "1" ] && [ "$allow_downgrade" != "1" ] && ! allow_downgrade_enabled; then
+    remember_update_result "skipped" "downgrade blocked" "$remote_version"
+    log_notice "agent update skipped: downgrade blocked"
+    rm -rf "$tmp_dir"
+    release_update_lock
+    return 0
+  fi
+  if ! prepare_backup "$remote_version"; then
+    remember_update_result "failed" "backup failed" "$remote_version"
+    rm -rf "$tmp_dir"
+    release_update_lock
+    return 1
+  fi
+  if ! apply_downloaded_files "$tmp_dir"; then
+    perform_rollback "internal" "install failed" || true
+    rm -rf "$tmp_dir"
+    release_update_lock
+    return 1
+  fi
+  if ! verify_installed_agent "$remote_version"; then
+    perform_rollback "internal" "installed agent validation failed" || true
+    rm -rf "$tmp_dir"
+    release_update_lock
+    return 1
+  fi
+  remember_update_result "success" "" "$remote_version"
+  log_notice "agent updated: $AGENT_VERSION -> $remote_version"
+  PENDING_AGENT_EXEC=1
+  PENDING_TARGET_VERSION="$remote_version"
+  rm -rf "$tmp_dir"
+  release_update_lock
+  if [ "$mode" = "manual" ]; then
+    if ! restart_service_foreground; then
+      perform_rollback "manual" "service restart failed" || true
+      return 1
+    fi
+    PENDING_AGENT_EXEC=0
+  fi
+  return 0
+}
 
-  cp "$update_agent" /usr/bin/wrtmonitor-agent.new
-  chmod 0755 /usr/bin/wrtmonitor-agent.new
-  mv /usr/bin/wrtmonitor-agent.new /usr/bin/wrtmonitor-agent
-  cp "$update_init" /etc/init.d/wrtmonitor.new
-  chmod 0755 /etc/init.d/wrtmonitor.new
-  mv /etc/init.d/wrtmonitor.new /etc/init.d/wrtmonitor
-  rm -f "$update_agent" "$update_init"
-  AGENT_UPDATED=1
-  logger -t wrtmonitor "agent updated: $AGENT_VERSION -> $remote_version"
-  /etc/init.d/wrtmonitor restart >/dev/null 2>&1 &
+update_status_text() {
+  load_status
+  printf 'current_version=%s\n' "$CURRENT_VERSION"
+  printf 'available_version=%s\n' "$AVAILABLE_VERSION"
+  printf 'auto_update=%s\n' "$AUTO_UPDATE_STATUS"
+  printf 'last_update_check=%s\n' "$LAST_UPDATE_CHECK"
+  printf 'last_update_status=%s\n' "$LAST_UPDATE_STATUS"
+  printf 'last_update_error=%s\n' "$LAST_UPDATE_ERROR"
+  printf 'last_successful_update=%s\n' "$LAST_SUCCESSFUL_UPDATE"
+  printf 'backup_available=%s\n' "$BACKUP_AVAILABLE"
+  printf 'update_source=%s\n' "$UPDATE_SOURCE_VALUE"
+}
+
+update_status_json() {
+  load_status
+  printf '{"current_version":"%s","available_version":"%s","auto_update":"%s","last_update_check":"%s","last_update_status":"%s","last_update_error":"%s","last_successful_update":"%s","backup_available":%s,"update_source":"%s"}' \
+    "$(json_escape "$CURRENT_VERSION")" \
+    "$(json_escape "$AVAILABLE_VERSION")" \
+    "$(json_escape "$AUTO_UPDATE_STATUS")" \
+    "$(json_escape "$LAST_UPDATE_CHECK")" \
+    "$(json_escape "$LAST_UPDATE_STATUS")" \
+    "$(json_escape "$LAST_UPDATE_ERROR")" \
+    "$(json_escape "$LAST_SUCCESSFUL_UPDATE")" \
+    "$( [ "$BACKUP_AVAILABLE" = "1" ] && printf true || printf false )" \
+    "$(json_escape "$UPDATE_SOURCE_VALUE")"
+}
+
+agent_status_json() {
+  load_status
+  printf '{"version":"%s","auto_update_enabled":%s,"last_update_check":"%s","last_update_status":"%s","last_update_error":"%s","last_successful_update":"%s","backup_available":%s,"update_source":"%s","available_version":"%s"}' \
+    "$(json_escape "$CURRENT_VERSION")" \
+    "$( [ "$AUTO_UPDATE_STATUS" = "enabled" ] && printf true || printf false )" \
+    "$(json_escape "$LAST_UPDATE_CHECK")" \
+    "$(json_escape "$LAST_UPDATE_STATUS")" \
+    "$(json_escape "$LAST_UPDATE_ERROR")" \
+    "$(json_escape "$LAST_SUCCESSFUL_UPDATE")" \
+    "$( [ "$BACKUP_AVAILABLE" = "1" ] && printf true || printf false )" \
+    "$(json_escape "$UPDATE_SOURCE_VALUE")" \
+    "$(json_escape "$AVAILABLE_VERSION")"
 }
 
 debug_telemetry() {
@@ -112,7 +482,9 @@ debug_api() {
   response_file="/tmp/wrtmonitor-debug-api-$$"
   status="$(curl -sS --connect-timeout 5 --max-time 15 -o "$response_file" -w '%{http_code}' -X GET "$endpoint" -H "Authorization: Bearer $(device_token)" || true)"
   printf 'http_status=%s\n' "$status"
-  printf 'response='; cat "$response_file" 2>/dev/null || true; printf '\n'
+  printf 'response='
+  cat "$response_file" 2>/dev/null || true
+  printf '\n'
   rm -f "$response_file"
 }
 
@@ -124,28 +496,23 @@ support_bundle() {
   printf 'agent_version=%s\n' "$AGENT_VERSION" >"$bundle_dir/version.txt"
   cat /etc/openwrt_release 2>/dev/null >>"$bundle_dir/version.txt" || true
   uci show wrtmonitor 2>/dev/null | sed -E "s/(device_token=).*/\1'***'/" >"$bundle_dir/wrtmonitor.conf" || true
-  uci show wireless 2>/dev/null | sed -E "s/(key|password)=.*/\1='***'/" >"$bundle_dir/wireless.conf" || true
-  uci show network 2>/dev/null | sed -E "s/(password|key)=.*/\1='***'/" >"$bundle_dir/network.conf" || true
+  [ ! -r "$STATUS_FILE" ] || cp "$STATUS_FILE" "$bundle_dir/update-status.env"
   logread 2>/dev/null | grep -i wrtmonitor | tail -100 >"$bundle_dir/wrtmonitor.log" || true
   debug_api >"$bundle_dir/debug-api.txt" 2>&1 || true
   debug_telemetry >"$bundle_dir/debug-telemetry.txt" 2>&1 || true
   if [ "$public_mode" = "--public" ]; then
-    sed -i -E 's/[0-9a-fA-F-]{16,}/***DEVICE***/g; s#https?://[^ /]+#https://***SERVER***#g; s/ssid=.*/ssid='"'"'***'"'"'/g' "$bundle_dir"/* 2>/dev/null || true
+    sed -i -E 's/[0-9a-fA-F-]{16,}/***DEVICE***/g; s#https?://[^ /]+#https://***SERVER***#g' "$bundle_dir"/* 2>/dev/null || true
   fi
   tar -czf "$archive" -C "$bundle_dir" .
   rm -rf "$bundle_dir"
   printf '%s\n' "$archive"
 }
 
-json_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
-}
-
 require_json_tool() {
   if command -v jsonfilter >/dev/null 2>&1; then
     return 0
   fi
-  logger -t wrtmonitor "jsonfilter is required for API response parsing"
+  log_notice "jsonfilter is required for API response parsing"
   return 1
 }
 
@@ -241,7 +608,7 @@ telemetry_payload() {
   load_value="$(cut -d' ' -f1 /proc/loadavg 2>/dev/null || echo 0)"
   case "$uptime_value" in ""|*[!0-9]*) uptime_value="0" ;; esac
   load_value="$(json_escape "$load_value")"
-  printf '{"device_id":"%s","telemetry":{"system":{"uptime":%s,"load":"%s","memory":%s,"processes":%s,"ubus":%s},"cpu":%s,"storage":%s,"thermal":%s,"traffic":%s,"board":%s,"network":%s,"network_devices":%s,"wifi":%s,"wireless_status":%s}}' "$(device_id)" "$uptime_value" "$load_value" "$(memory_json)" "$(processes_json)" "$(ubus_json system info)" "$(cpu_json)" "$(storage_json)" "$(thermal_json)" "$(traffic_json)" "$(ubus_json system board)" "$(ubus_json network.interface dump)" "$(ubus_json network.device status)" "$(wifi_status_json)" "$(ubus_json network.wireless status)"
+  printf '{"device_id":"%s","telemetry":{"system":{"uptime":%s,"load":"%s","memory":%s,"processes":%s,"ubus":%s},"cpu":%s,"storage":%s,"thermal":%s,"traffic":%s,"board":%s,"network":%s,"network_devices":%s,"wifi":%s,"wireless_status":%s,"agent":%s}}' "$(device_id)" "$uptime_value" "$load_value" "$(memory_json)" "$(processes_json)" "$(ubus_json system info)" "$(cpu_json)" "$(storage_json)" "$(thermal_json)" "$(traffic_json)" "$(ubus_json system board)" "$(ubus_json network.interface dump)" "$(ubus_json network.device status)" "$(wifi_status_json)" "$(ubus_json network.wireless status)" "$(agent_status_json)"
 }
 
 memory_json() {
@@ -262,7 +629,7 @@ cpu_json() {
 }
 
 storage_json() {
-  line="$(df -k /overlay 2>/dev/null | awk 'NR==2 {print $2, $3, $4}' )"
+  line="$(df -k /overlay 2>/dev/null | awk 'NR==2 {print $2, $3, $4}')"
   [ -n "$line" ] || line="$(df -k / 2>/dev/null | awk 'NR==2 {print $2, $3, $4}')"
   total="0"
   used="0"
@@ -346,6 +713,18 @@ wifi_status_json() {
   fi
 }
 
+set_auto_update_config() {
+  enabled_value="$1"
+  if [ "$enabled_value" = "1" ]; then
+    uci set "$CONFIG.auto_update=1"
+  else
+    uci set "$CONFIG.auto_update=0"
+  fi
+  uci commit wrtmonitor
+  load_status
+  write_status "$LAST_UPDATE_STATUS" "$LAST_UPDATE_ERROR" "$AVAILABLE_VERSION" "$LAST_UPDATE_CHECK" "$LAST_SUCCESSFUL_UPDATE"
+}
+
 poll_commands() {
   agent_enabled || return 0
   [ -n "$(device_id)" ] || register_device
@@ -425,11 +804,46 @@ execute_command() {
       fi
       ;;
     network.interfaces)
-      result="{\"ifstatus\":\"$(ifstatus lan 2>/dev/null | sed 's/"/\\"/g' | tr '\n' ' ')\"}"
+      result="{\"ifstatus\":\"$(ifstatus lan 2>/dev/null | sed 's/\"/\\\\\"/g' | tr '\n' ' ')\"}"
       ;;
     agent.disconnect)
       result='{"message":"agent disabled"}'
       disconnect_after=1
+      ;;
+    agent.update)
+      printf '%s' "$command_payload" >/tmp/wrtmonitor-command-payload
+      force="$(json_get_bool /tmp/wrtmonitor-command-payload '@.force')"
+      allow_downgrade="$(json_get_bool /tmp/wrtmonitor-command-payload '@.allow_downgrade')"
+      rm -f /tmp/wrtmonitor-command-payload
+      [ "$force" = "true" ] || force="false"
+      [ "$allow_downgrade" = "true" ] || allow_downgrade="false"
+      if check_for_update "command" "$( [ "$force" = "true" ] && printf 1 || printf 0 )" "$( [ "$allow_downgrade" = "true" ] && printf 1 || printf 0 )"; then
+        result="$(agent_status_json)"
+      else
+        status="failed"
+        load_status
+        result="{\"error\":\"$(json_escape "${LAST_UPDATE_ERROR:-update failed}")\"}"
+      fi
+      ;;
+    agent.rollback)
+      if perform_rollback "command" "rollback requested"; then
+        result="$(agent_status_json)"
+      else
+        status="failed"
+        load_status
+        result="{\"error\":\"$(json_escape "${LAST_UPDATE_ERROR:-rollback unavailable}")\"}"
+      fi
+      ;;
+    agent.set_auto_update)
+      printf '%s' "$command_payload" >/tmp/wrtmonitor-command-payload
+      enabled="$(json_get_bool /tmp/wrtmonitor-command-payload '@.enabled')"
+      rm -f /tmp/wrtmonitor-command-payload
+      if [ "$enabled" = "false" ]; then
+        set_auto_update_config 0
+      else
+        set_auto_update_config 1
+      fi
+      result="$(agent_status_json)"
       ;;
     *)
       status="failed"
@@ -440,8 +854,11 @@ execute_command() {
   if [ "$disconnect_after" = "1" ] && [ "$status" = "done" ]; then
     uci set "$CONFIG.enabled=0"
     uci commit wrtmonitor
-    logger -t wrtmonitor "agent disconnected by server command"
+    log_notice "agent disconnected by server command"
     exit 0
+  fi
+  if [ "$PENDING_AGENT_EXEC" = "1" ] && [ "$status" = "done" ]; then
+    handoff_to_updated_agent
   fi
 }
 
@@ -451,19 +868,48 @@ daemon() {
   while true; do
     now="$(date +%s 2>/dev/null || echo 0)"
     if [ "$now" -ge "$next_update_check" ]; then
-      check_for_update || true
-      [ "$AGENT_UPDATED" = "0" ] || exit 0
-      next_update_check=$((now + UPDATE_CHECK_INTERVAL))
+      check_for_update "scheduled" 0 0 || true
+      if [ "$PENDING_AGENT_EXEC" = "1" ]; then
+        handoff_to_updated_agent
+      fi
+      next_update_check=$((now + $(update_interval_seconds)))
     fi
-    telemetry || logger -t wrtmonitor "telemetry failed"
-    poll_commands || logger -t wrtmonitor "command polling failed"
+    telemetry || log_notice "telemetry failed"
+    poll_commands || log_notice "command polling failed"
     sleep "$(cfg interval)"
   done
 }
 
+manual_update() {
+  force="0"
+  allow_downgrade="0"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --force) force="1" ;;
+      --allow-downgrade) allow_downgrade="1" ;;
+      *) echo "Unknown update flag: $1" >&2; exit 1 ;;
+    esac
+    shift
+  done
+  check_for_update "manual" "$force" "$allow_downgrade"
+}
+
+manual_rollback() {
+  perform_rollback "manual" "manual rollback"
+}
+
 case "${1:-}" in
   register) register_device ;;
-  update) check_for_update 1 ;;
+  update) shift; manual_update "$@" ;;
+  rollback) manual_rollback ;;
+  update-status)
+    if [ "${2:-}" = "--json" ]; then
+      update_status_json
+      printf '\n'
+    else
+      update_status_text
+    fi
+    ;;
   send-now) acquire_lock || exit 0; telemetry; poll_commands ;;
   daemon) acquire_lock || exit 0; daemon ;;
   debug) debug ;;
@@ -471,5 +917,5 @@ case "${1:-}" in
   debug-api) debug_api ;;
   version) printf '%s\n' "$AGENT_VERSION" ;;
   support-bundle) support_bundle "${2:-}" ;;
-  *) echo "Usage: wrtmonitor-agent register|send-now|daemon|update|debug|debug-telemetry|debug-api|version|support-bundle [--public]" >&2; exit 1 ;;
+  *) echo "Usage: wrtmonitor-agent register|send-now|daemon|update [--force] [--allow-downgrade]|rollback|update-status [--json]|debug|debug-telemetry|debug-api|version|support-bundle [--public]" >&2; exit 1 ;;
 esac

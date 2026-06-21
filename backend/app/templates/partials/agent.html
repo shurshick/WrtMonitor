@@ -1,0 +1,30 @@
+<section class="card">
+  <h2>Агент</h2>
+  <div class="metric"><span class="metric__label">Версия</span><span class="metric__value">{{ agent.get('version') or 'нет данных' }}</span></div>
+  <div class="metric"><span class="metric__label">Автообновление</span><span class="metric__value">{{ 'включено' if agent.get('auto_update_enabled') else 'выключено' if agent else 'нет данных' }}</span></div>
+  <div class="metric"><span class="metric__label">Доступная версия</span><span class="metric__value">{{ agent.get('available_version') or 'нет данных' }}</span></div>
+  <div class="metric"><span class="metric__label">Последняя проверка</span><span class="metric__value">{{ agent.get('last_update_check') or 'нет данных' }}</span></div>
+  <div class="metric"><span class="metric__label">Статус обновления</span><span class="metric__value">{{ agent.get('last_update_status') or 'нет данных' }}</span></div>
+  <div class="metric"><span class="metric__label">Последнее успешное обновление</span><span class="metric__value">{{ agent.get('last_successful_update') or 'нет данных' }}</span></div>
+  <div class="metric"><span class="metric__label">Последняя ошибка</span><span class="metric__value">{{ agent.get('last_update_error') or 'нет данных' }}</span></div>
+  <div class="metric"><span class="metric__label">Backup</span><span class="metric__value">{{ 'доступен' if agent.get('backup_available') else 'нет' if agent else 'нет данных' }}</span></div>
+  <div class="metric"><span class="metric__label">Источник</span><span class="metric__value">{{ agent.get('update_source') or 'нет данных' }}</span></div>
+  <div class="form-stack">
+    <form method="post" action="/devices/{{ device.id }}/web-command">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="command_type" value="agent.update">
+      <button type="submit">Проверить обновление</button>
+    </form>
+    <form method="post" action="/devices/{{ device.id }}/web-command">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="command_type" value="agent.set_auto_update">
+      <input type="hidden" name="enabled" value="{{ 'false' if agent.auto_update_enabled else 'true' }}">
+      <button class="button button--secondary" type="submit">{{ 'Выключить auto-update' if agent.auto_update_enabled else 'Включить auto-update' }}</button>
+    </form>
+    <form method="post" action="/devices/{{ device.id }}/web-command" onsubmit="return confirm('Выполнить rollback агента к предыдущей версии?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="command_type" value="agent.rollback">
+      <button class="button--danger" type="submit">Rollback agent</button>
+    </form>
+  </div>
+</section>

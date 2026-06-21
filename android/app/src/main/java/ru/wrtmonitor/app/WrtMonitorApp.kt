@@ -104,11 +104,13 @@ fun WrtMonitorApp() {
     var accessToken by remember { mutableStateOf(sessionStore.accessToken) }
     var tab by remember { mutableStateOf(Tab.Routers) }
     var selectedDevice by remember { mutableStateOf<RouterDevice?>(null) }
+    var deviceListRefreshNonce by remember { mutableStateOf(0) }
     val expireSession = {
         sessionStore.clearSession()
         accessToken = ""
         selectedDevice = null
         tab = Tab.Routers
+        deviceListRefreshNonce += 1
     }
     MaterialTheme(
         colorScheme = darkColorScheme(
@@ -192,6 +194,7 @@ fun WrtMonitorApp() {
                 DeviceListScreen(
                     serverUrl = serverUrl,
                     accessToken = accessToken,
+                    refreshNonce = deviceListRefreshNonce,
                     modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
                     onOpenDevice = { selectedDevice = it },
                     onSessionExpired = expireSession
@@ -206,7 +209,11 @@ fun WrtMonitorApp() {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     when (tab) {
-                        Tab.Routers -> DeviceDetailScreen(serverUrl, accessToken, device!!, expireSession)
+                        Tab.Routers -> DeviceDetailScreen(serverUrl, accessToken, device!!, expireSession) {
+                            selectedDevice = null
+                            tab = Tab.Routers
+                            deviceListRefreshNonce += 1
+                        }
                         Tab.Wifi -> DeviceTabRequired(device) { WifiControlScreen(serverUrl, accessToken, it, expireSession) }
                         Tab.Network -> DeviceTabRequired(device) { NetworkControlScreen(serverUrl, accessToken, it, expireSession) }
                         Tab.System -> DeviceTabRequired(device) { SystemControlScreen(serverUrl, accessToken, it, expireSession) }

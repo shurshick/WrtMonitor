@@ -41,7 +41,10 @@ def current_user(
 def device_from_token(authorization: str | None, db: Session) -> Device:
     token = bearer_token(authorization)
     device = db.scalars(
-        select(Device).where(Device.token_hash == hash_token(token))
+        select(Device).where(
+            Device.token_hash == hash_token(token),
+            Device.archived_at.is_(None),
+        )
     ).first()
     if not device:
         raise HTTPException(status_code=401, detail="Invalid device token")

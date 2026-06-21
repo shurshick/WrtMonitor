@@ -1,35 +1,26 @@
 # OpenWrt agent
 
-`wrtmonitor-agent` регистрирует роутер, отправляет telemetry и получает только разрешённые команды. Он использует исходящие HTTPS-запросы к серверу, поэтому проброс портов на роутер не требуется.
+`wrtmonitor-agent` регистрирует роутер, отправляет telemetry, получает команды с сервера и умеет безопасно обновлять сам себя с собственного сервера WrtMonitor.
 
 ## Требования
 
-- OpenWrt с BusyBox `ash`;
-- `opkg` и доступ к репозиторию пакетов OpenWrt при первой установке;
-- доступ роутера к внешнему HTTPS-адресу WrtMonitor;
-- созданный администратор сервера.
+- OpenWrt с `opkg`;
+- исходящий доступ роутера к серверу WrtMonitor;
+- созданный администратор сервера;
+- для HTTPS нужен `ca-bundle`.
 
-Установщик сам проверяет и при необходимости ставит `curl`, `jsonfilter`, `ca-bundle`, `uci` и `ubus` через `opkg`. Ручная установка обычно не нужна. Если роутер не может обратиться к репозиторию OpenWrt, подготовьте эти пакеты в локальном репозитории или установите их до запуска установщика.
+Установщик сам подтягивает зависимости через `opkg`, если их не хватает:
 
-Проверить итоговое окружение можно командой:
-
-```sh
-command -v curl
-command -v uci
-command -v ubus
-command -v jsonfilter
-
-```
+- `curl`
+- `jsonfilter`
+- `uci`
+- `ubus`
+- `ca-bundle`
+- `coreutils-sha256sum`
 
 ## Установка с собственного сервера
 
-Это рекомендуемый способ для закрытых сетей и окружений без доступа к GitHub. После обновления контейнера WrtMonitor файлы агента автоматически доступны на вашем сервере:
-
-```text
-https://monitor.example.ru/downloads/openwrt/
-```
-
-Подставьте свой внешний HTTPS-домен и выполните на роутере:
+Рекомендуемый способ:
 
 ```sh
 cd /tmp
@@ -47,26 +38,20 @@ sh install-openwrt.sh \
   --name 'HomeRouter'
 ```
 
-Установщик получает короткоживущий admin token, создаёт отдельный `device_token`, записывает его в UCI и запускает сервис. Пароль администратора на роутере не сохраняется.
-
-### Интерактивная установка
-
-Если параметры не передавать, установщик задаст вопросы сам:
-
-```sh
-sh install-openwrt.sh
-```
-
 ## Установка из GitHub Release
 
-Используйте этот вариант, если сервер WrtMonitor ещё не обновлён или нужен фиксированный релизный архив. Скачайте архив со страницы нужного release, распакуйте его и запустите `install-openwrt.sh` с теми же параметрами.
+Если сервер ещё не обновлён до нужной версии:
 
 ```sh
 cd /tmp
 wget -O wrtmonitor-agent.tar.gz \
-  https://github.com/shurshick/wrtmonitor/releases/download/v0.1.1-rc6-agent-auto-update/wrtmonitor-openwrt-agent-v0.1.1-rc6.tar.gz
+  https://github.com/shurshick/wrtmonitor/releases/download/v0.1.1-rc7-agent-update-safety/wrtmonitor-openwrt-agent-v0.1.1-rc7.tar.gz
 tar -xzf wrtmonitor-agent.tar.gz
-sh install-openwrt.sh --server 'https://monitor.example.ru' --admin-user 'admin@example.com' --admin-password 'your-admin-password' --name 'HomeRouter'
+sh install-openwrt.sh \
+  --server 'https://monitor.example.ru' \
+  --admin-user 'admin@example.com' \
+  --admin-password 'your-admin-password' \
+  --name 'HomeRouter'
 ```
 
 ## Проверка после установки
@@ -77,62 +62,123 @@ uci show wrtmonitor
 ps | grep wrtmonitor
 wrtmonitor-agent version
 wrtmonitor-agent send-now
-logread | grep wrtmonitor | tail -30
+logread | grep wrtmonitor | tail -50
 ```
 
-Ожидается процесс `wrtmonitor-agent daemon`, а устройство должно обновиться в WebUI и Android. Для просмотра собранных данных используйте:
+## Auto-update
 
-```sh
-wrtmonitor-agent debug
-wrtmonitor-agent debug-telemetry
-wrtmonitor-agent debug-api
+Agent проверяет свой сервер по адресу:
+
+```text
+https://monitor.example.ru/downloads/openwrt/
 ```
 
-## Обновление агента с собственного сервера
+Проверка выполняется:
 
-### Автообновление
+- при старте;
+- затем раз в `update_interval_hours`, по умолчанию раз в 6 часов.
 
-Агент проверяет свой сервер по адресу `https://monitor.example.ru/downloads/openwrt/` при старте и далее раз в шесть часов. При появлении новой версии он скачивает агент и init-скрипт, выполняет `sh -n`, сохраняет текущую UCI-конфигурацию и перезапускает службу. GitHub для автообновления не нужен.
+Во время обновления agent:
 
-Автообновление включено по умолчанию, в том числе для существующей конфигурации без параметра. Чтобы отключить его:
+1. скачивает `wrtmonitor-agent`, `wrtmonitor.init`, `install-openwrt.sh`, `agent-version.txt`, `SHA256SUMS.txt`;
+2. проверяет `SHA-256` для каждого файла;
+3. делает `sh -n` для shell-скриптов;
+4. сохраняет backup предыдущей версии;
+5. заменяет файлы;
+6. при ошибке выполняет rollback.
+
+## Manual update
 
 ```sh
+wrtmonitor-agent version
+wrtmonitor-agent update
+wrtmonitor-agent update --force
+wrtmonitor-agent update --allow-downgrade
+wrtmonitor-agent update-status
+wrtmonitor-agent update-status --json
+```
+
+`--force` переустанавливает даже ту же самую версию.
+
+`--allow-downgrade` разрешает ручной downgrade, если на сервере лежит более старая версия.
+
+## Rollback
+
+Ручной rollback:
+
+```sh
+wrtmonitor-agent rollback
+```
+
+Backup хранится в:
+
+```text
+/etc/wrtmonitor/backup/
+```
+
+Там лежат:
+
+- `wrtmonitor-agent.previous`
+- `wrtmonitor.init.previous`
+- `VERSION.previous`
+- `backup-info.txt`
+
+## Disable auto-update
+
+```sh
+uci get wrtmonitor.main.auto_update
 uci set wrtmonitor.main.auto_update='0'
 uci commit wrtmonitor
 ```
 
-Для немедленной проверки используйте:
+Дополнительные параметры:
 
 ```sh
-wrtmonitor-agent update
+uci set wrtmonitor.main.update_interval_hours='6'
+uci set wrtmonitor.main.update_channel='stable'
+uci set wrtmonitor.main.allow_downgrade='0'
+uci commit wrtmonitor
 ```
 
-Обновление сохраняет `device_id` и `device_token`, поэтому повторная авторизация администратором не нужна.
+## Update status
+
+```sh
+wrtmonitor-agent update-status
+```
+
+Показывает:
+
+- `current_version`
+- `available_version`
+- `auto_update`
+- `last_update_check`
+- `last_update_status`
+- `last_update_error`
+- `last_successful_update`
+- `backup_available`
+- `update_source`
+
+## SHA256 verification
+
+Server должен отдавать:
+
+```text
+/downloads/openwrt/SHA256SUMS.txt
+/downloads/openwrt/agent-version.txt
+```
+
+Проверить вручную можно так:
 
 ```sh
 cd /tmp
-/etc/init.d/wrtmonitor stop 2>/dev/null || true
 BASE_URL='https://monitor.example.ru/downloads/openwrt'
 wget -O wrtmonitor-agent "$BASE_URL/wrtmonitor-agent"
-wget -O wrtmonitor.init "$BASE_URL/wrtmonitor.init"
-chmod 0755 wrtmonitor-agent wrtmonitor.init
-cp wrtmonitor-agent /usr/bin/wrtmonitor-agent
-cp wrtmonitor.init /etc/init.d/wrtmonitor
-/etc/init.d/wrtmonitor enable
-/etc/init.d/wrtmonitor restart
-wrtmonitor-agent send-now
+wget -O SHA256SUMS.txt "$BASE_URL/SHA256SUMS.txt"
+sha256sum wrtmonitor-agent
+grep 'wrtmonitor-agent' SHA256SUMS.txt
 ```
 
-Проверьте версию и лог:
-
-```sh
-wrtmonitor-agent version
-logread | grep wrtmonitor | tail -30
-```
-
-## Полное удаление агента
-
-Команда удаляет сервис, исполняемый файл и локальную конфигурацию. Telemetry и история команд на сервере остаются как исторические данные.
+## Удаление агента
 
 ```sh
 /etc/init.d/wrtmonitor stop 2>/dev/null || true
@@ -140,39 +186,32 @@ logread | grep wrtmonitor | tail -30
 rm -f /usr/bin/wrtmonitor-agent
 rm -f /etc/init.d/wrtmonitor
 rm -f /etc/config/wrtmonitor
+rm -rf /etc/wrtmonitor
 ```
 
-После удаления убедитесь, что процесс отсутствует:
+## Troubleshooting
+
+Проверка логов:
 
 ```sh
-ps | grep wrtmonitor
+logread | grep wrtmonitor | tail -50
 ```
 
-## Состав telemetry
+Типовые ситуации:
 
-Agent передаёт безопасный снимок состояния:
-
-- uptime, load average, память и число процессов;
-- CPU: модель и число ядер;
-- место на overlay/корневом накопителе;
-- температуру, если драйвер роутера предоставляет датчик;
-- суммарные RX/TX-счётчики без MAC-адресов и содержимого трафика;
-- board и firmware через `ubus`;
-- статусы и IP-адреса интерфейсов;
-- Wi-Fi radio, band, channel, SSID и состояние;
-- расширенные `ubus` snapshots для совместимости с разными моделями OpenWrt.
-
-MAC-адреса клиентов, пароли Wi-Fi и содержимое трафика agent не отправляет.
-
-## Диагностика
-
-Если нет telemetry:
-
-```sh
-wrtmonitor-agent send-now
-logread | grep wrtmonitor | tail -30
-uci get wrtmonitor.main.server_url
-curl -i https://monitor.example.ru/health
-```
-
-Если в логе есть `jsonfilter is required`, установите `jsonfilter` через `opkg`.
+- `checksum mismatch`
+  Обычно сервер раздаёт не те файлы или `SHA256SUMS.txt` устарел.
+- `download failed`
+  Нет доступа к серверу, DNS или HTTPS.
+- `sh -n failed`
+  Повреждён скачанный shell-файл.
+- `rollback completed`
+  Обновление сорвалось, agent вернул предыдущую рабочую версию.
+- `rollback unavailable`
+  Backup ещё не был создан.
+- `server unreachable`
+  Проверьте `server_url`, DNS, шлюз и сертификаты.
+- `ca-bundle missing`
+  Установите пакет `ca-bundle`.
+- `jsonfilter missing`
+  Установите пакет `jsonfilter`.
