@@ -6,6 +6,7 @@ import pytest
 
 
 AGENT = Path(__file__).resolve().parents[1] / "wrtmonitor-agent"
+INSTALLER = Path(__file__).resolve().parents[1] / "install-openwrt.sh"
 
 
 def agent_source() -> str:
@@ -62,3 +63,13 @@ def test_agent_hardening_is_present():
     assert "masked_token()" in source
     assert "debug-telemetry" in source
     assert "debug-api" in source
+
+
+def test_installer_bootstraps_runtime_dependencies():
+    source = INSTALLER.read_text(encoding="utf-8")
+
+    assert "ensure_dependencies()" in source
+    assert "opkg update" in source
+    assert "opkg install $missing_packages" in source
+    for dependency in ("curl", "jsonfilter", "ca-bundle", "uci", "ubus"):
+        assert dependency in source

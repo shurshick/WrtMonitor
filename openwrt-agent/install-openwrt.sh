@@ -8,6 +8,52 @@ NAME=""
 ADMIN_USERNAME=""
 ADMIN_PASSWORD=""
 
+missing_packages=""
+
+add_missing_package() {
+  command_name="$1"
+  package_name="$2"
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    missing_packages="$missing_packages $package_name"
+  fi
+}
+
+has_ca_bundle() {
+  [ -r /etc/ssl/certs/ca-certificates.crt ] || [ -r /etc/ssl/cert.pem ]
+}
+
+ensure_dependencies() {
+  add_missing_package curl curl
+  add_missing_package jsonfilter jsonfilter
+  add_missing_package uci uci
+  add_missing_package ubus ubus
+  if ! has_ca_bundle; then
+    missing_packages="$missing_packages ca-bundle"
+  fi
+
+  if [ -n "$missing_packages" ]; then
+    if ! command -v opkg >/dev/null 2>&1; then
+      echo "Cannot install dependencies: opkg is not available" >&2
+      exit 1
+    fi
+    echo "Installing agent dependencies:$missing_packages"
+    opkg update
+    # shellcheck disable=SC2086
+    opkg install $missing_packages
+  fi
+
+  for command_name in curl jsonfilter uci ubus; do
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+      echo "Required dependency is unavailable after installation: $command_name" >&2
+      exit 1
+    fi
+  done
+  if ! has_ca_bundle; then
+    echo "Required dependency is unavailable after installation: ca-bundle" >&2
+    exit 1
+  fi
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --server) SERVER_URL="$2"; shift 2 ;;
@@ -18,6 +64,8 @@ while [ "$#" -gt 0 ]; do
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
+
+ensure_dependencies
 
 prompt_value() {
   label="$1"
