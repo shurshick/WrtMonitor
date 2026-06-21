@@ -171,6 +171,7 @@ config wrtmonitor 'main'
 	option device_id '$DEVICE_ID'
 	option name '$NAME'
 	option interval '60'
+	option auto_update '1'
 EOF
 
 /etc/init.d/wrtmonitor enable

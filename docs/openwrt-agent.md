@@ -64,7 +64,7 @@ sh install-openwrt.sh
 ```sh
 cd /tmp
 wget -O wrtmonitor-agent.tar.gz \
-  https://github.com/shurshick/wrtmonitor/releases/download/v0.1.1-rc5-device-lifecycle/wrtmonitor-openwrt-agent-v0.1.1-rc5.tar.gz
+  https://github.com/shurshick/wrtmonitor/releases/download/v0.1.1-rc6-agent-auto-update/wrtmonitor-openwrt-agent-v0.1.1-rc6.tar.gz
 tar -xzf wrtmonitor-agent.tar.gz
 sh install-openwrt.sh --server 'https://monitor.example.ru' --admin-user 'admin@example.com' --admin-password 'your-admin-password' --name 'HomeRouter'
 ```
@@ -89,6 +89,23 @@ wrtmonitor-agent debug-api
 ```
 
 ## Обновление агента с собственного сервера
+
+### Автообновление
+
+Агент проверяет свой сервер по адресу `https://monitor.example.ru/downloads/openwrt/` при старте и далее раз в шесть часов. При появлении новой версии он скачивает агент и init-скрипт, выполняет `sh -n`, сохраняет текущую UCI-конфигурацию и перезапускает службу. GitHub для автообновления не нужен.
+
+Автообновление включено по умолчанию, в том числе для существующей конфигурации без параметра. Чтобы отключить его:
+
+```sh
+uci set wrtmonitor.main.auto_update='0'
+uci commit wrtmonitor
+```
+
+Для немедленной проверки используйте:
+
+```sh
+wrtmonitor-agent update
+```
 
 Обновление сохраняет `device_id` и `device_token`, поэтому повторная авторизация администратором не нужна.
 

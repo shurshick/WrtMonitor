@@ -62,6 +62,16 @@ def test_agent_has_disconnect_and_wifi_password_commands():
     assert "agent_enabled()" in source
 
 
+def test_agent_can_update_itself_from_its_configured_server():
+    source = agent_source()
+
+    assert "check_for_update()" in source
+    assert '"$(server_url)/downloads/openwrt"' in source
+    assert 'curl -fsS --connect-timeout 10 --max-time 60' in source
+    assert "sh -n \"$update_agent\"" in source
+    assert "/etc/init.d/wrtmonitor restart" in source
+
+
 def test_agent_hardening_is_present():
     source = agent_source()
 
