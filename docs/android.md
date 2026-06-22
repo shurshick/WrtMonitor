@@ -2,16 +2,15 @@
 
 Android-приложение - основной пользовательский интерфейс `WrtMonitor`.
 
-Текущая версия: `v0.1.1-rc8`.
+Текущая версия: `v0.1.1-rc9`.
 
 ## Установка
 
-1. Откройте релиз:
-   [v0.1.1-rc8-router-management-core](https://github.com/shurshick/wrtmonitor/releases/tag/v0.1.1-rc8-router-management-core)
+1. Откройте релиз `v0.1.1-rc9-agent-modularization-and-ui-fixes`.
 2. Скачайте APK:
 
    ```text
-   wrtmonitor-android-v0.1.1-rc8-debug.apk
+   wrtmonitor-android-v0.1.1-rc9-debug.apk
    ```
 
 3. Установите APK на Android-устройство.
@@ -30,6 +29,7 @@ Android-приложение - основной пользовательский
 - список роутеров;
 - экран устройства;
 - telemetry, Wi-Fi, сеть, система и agent status;
+- compact capabilities summary на экране устройства;
 - capability-aware управляющие действия;
 - diagnostics;
 - экран "О приложении";
@@ -37,10 +37,10 @@ Android-приложение - основной пользовательский
 
 ## Обновление APK
 
-Debug APK подписывается стабильным тестовым ключом и имеет увеличиваемый `versionCode`, поэтому `v0.1.1-rc8` ставится поверх более ранних RC-версий без удаления приложения.
+Debug APK подписывается стабильным тестовым ключом и имеет увеличиваемый `versionCode`, поэтому `v0.1.1-rc9` ставится поверх более ранних RC-версий без удаления приложения.
 
 ## Ограничения текущей версии
 
 - команды выполняются через очередь и приходят при следующем polling agent;
 - локальный поиск роутера по LAN пока вынесен в будущий этап;
-- production-signed APK еще не входит в релизный контур.
+- production-signed APK ещё не входит в релизный контур.

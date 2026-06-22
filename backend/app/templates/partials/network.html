@@ -1,5 +1,8 @@
 <section class="card">
   <h2>Сеть</h2>
+  {% if capabilities_message and not supports.network_read %}
+  <p class="notice">{{ capabilities_message }}</p>
+  {% endif %}
   <div class="metric"><span class="metric__label">Суммарный RX</span><span class="metric__value">{{ traffic.rx_bytes or 0 }} байт</span></div>
   <div class="metric"><span class="metric__label">Суммарный TX</span><span class="metric__value">{{ traffic.tx_bytes or 0 }} байт</span></div>
   <ul class="panel-list section">

@@ -8,22 +8,27 @@
   <div class="metric"><span class="metric__label">Последний статус обновления</span><span class="metric__value">{{ agent.get('last_update_status') or 'нет данных' }}</span></div>
   <div class="metric"><span class="metric__label">Последняя ошибка</span><span class="metric__value">{{ agent.get('last_update_error') or 'нет данных' }}</span></div>
   <div class="metric"><span class="metric__label">Rollback</span><span class="metric__value">{{ 'доступен' if agent.get('rollback_available') else 'нет' if agent else 'нет данных' }}</span></div>
-  <div class="metric">
-    <span class="metric__label">Capabilities</span>
-    <span class="metric__value metric__value--small">
-      {% if capabilities %}
-        {{ capabilities|length }} поддерживаемых действий
-      {% else %}
-        нет данных
-      {% endif %}
-    </span>
-  </div>
-  {% if capabilities %}
-  <ul class="panel-list section">
-    {% for name, enabled in capabilities.items() %}
-    <li><strong>{{ name }}</strong><br>{{ 'available' if enabled else 'disabled' }}</li>
-    {% endfor %}
-  </ul>
+  <div class="metric"><span class="metric__label">Capabilities</span><span class="metric__value metric__value--small">{{ capabilities_summary }}</span></div>
+  {% if capabilities_message %}
+  <p class="muted">{{ capabilities_message }}</p>
+  {% endif %}
+  {% if capabilities_groups %}
+  <details class="section">
+    <summary>Показать capabilities</summary>
+    <div class="form-stack section">
+      {% for group in capabilities_groups %}
+      <div>
+        <strong>{{ group.title }}</strong>
+        {% if group.enabled %}
+        <div class="muted">{{ group.enabled|join(', ') }}</div>
+        {% endif %}
+        {% if group.disabled %}
+        <div class="muted">{{ group.disabled|join(', ') }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </details>
   {% endif %}
   <div class="form-stack">
     {% if supports.agent_update %}
@@ -72,9 +77,6 @@
         <span class="risk-badge risk-badge--readonly">read only</span>
       </div>
     </form>
-    {% endif %}
-    {% if legacy_agent %}
-    <p class="muted">Агент работает в режиме совместимости: базовые команды доступны без блока capabilities.</p>
     {% endif %}
   </div>
 </section>

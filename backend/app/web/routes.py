@@ -40,6 +40,16 @@ templates = Jinja2Templates(directory="backend/app/templates")
 router = APIRouter()
 
 
+CAPABILITY_GROUPS = {
+    "Agent": ("agent.",),
+    "Telemetry": ("telemetry.",),
+    "Wi-Fi": ("wifi.",),
+    "Network": ("network.",),
+    "Diagnostics": ("diagnostics.",),
+    "System": ("system.",),
+}
+
+
 def format_timestamp(value: datetime | None) -> str:
     if value is None:
         return "нет данных"
@@ -66,6 +76,60 @@ def format_duration(value: int | None) -> str:
 
 templates.env.filters["timestamp"] = format_timestamp
 templates.env.filters["duration"] = format_duration
+
+
+def capability_summary(capabilities: dict[str, bool]) -> str:
+    if not capabilities:
+        return "нет данных"
+    enabled = sum(1 for enabled in capabilities.values() if enabled)
+    disabled = sum(1 for enabled in capabilities.values() if not enabled)
+    return f"{enabled} enabled / {disabled} disabled"
+
+
+def grouped_capabilities(capabilities: dict[str, bool]) -> list[dict[str, object]]:
+    grouped: list[dict[str, object]] = []
+    if not capabilities:
+        return grouped
+    remaining = dict(sorted(capabilities.items()))
+    for title, prefixes in CAPABILITY_GROUPS.items():
+        enabled_items = [
+            name
+            for name, enabled in remaining.items()
+            if enabled and name.startswith(prefixes)
+        ]
+        disabled_items = [
+            name
+            for name, enabled in remaining.items()
+            if not enabled and name.startswith(prefixes)
+        ]
+        if enabled_items or disabled_items:
+            grouped.append(
+                {
+                    "title": title,
+                    "enabled": enabled_items,
+                    "disabled": disabled_items,
+                }
+            )
+            for name in [*enabled_items, *disabled_items]:
+                remaining.pop(name, None)
+    if remaining:
+        grouped.append(
+            {
+                "title": "Other",
+                "enabled": [name for name, enabled in remaining.items() if enabled],
+                "disabled": [name for name, enabled in remaining.items() if not enabled],
+            }
+        )
+    return grouped
+
+
+def capabilities_hint(capabilities: dict[str, bool]) -> str | None:
+    if capabilities:
+        return None
+    return (
+        "Агент ещё не передал capabilities. Для управления установите агент rc9 "
+        "заново."
+    )
 
 
 def require_web_csrf(
@@ -212,6 +276,9 @@ def device_page(
     radios = wifi.get("radios") or []
     interfaces = network.get("interfaces") or []
     capabilities = agent.get("capabilities") or {}
+    capabilities_summary = capability_summary(capabilities)
+    capabilities_groups = grouped_capabilities(capabilities)
+    capabilities_message = capabilities_hint(capabilities)
     supports = {
         "agent_update": device_supports(db, device_id, "agent.update"),
         "agent_rollback": device_supports(db, device_id, "agent.rollback"),
@@ -263,7 +330,9 @@ def device_page(
             "board": board,
             "agent": agent,
             "capabilities": capabilities,
-            "legacy_agent": not bool(capabilities),
+            "capabilities_summary": capabilities_summary,
+            "capabilities_groups": capabilities_groups,
+            "capabilities_message": capabilities_message,
             "supports": supports,
             "radios": radios,
             "interfaces": interfaces,

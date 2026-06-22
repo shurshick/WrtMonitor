@@ -2,20 +2,53 @@
 {% block title %}WrtMonitor - Устройства{% endblock %}
 {% block content %}
 <div class="page-heading">
-  <div><p class="eyebrow">Сервер WrtMonitor</p><h1>Устройства</h1><p class="page-heading__description">Подключённые OpenWrt-роутеры и их последнее состояние.</p></div>
-  <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button--secondary" type="submit">Выйти</button></form>
+  <div>
+    <p class="eyebrow">Сервер WrtMonitor</p>
+    <h1>Устройства</h1>
+    <p class="page-heading__description">Подключённые OpenWrt-роутеры и их последнее состояние.</p>
+  </div>
+  <form method="post" action="/logout">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="button--secondary" type="submit">Выйти</button>
+  </form>
 </div>
 <div class="table-wrap">
   <table>
-    <thead><tr><th>Устройство</th><th>Hostname</th><th>Модель</th><th>Прошивка</th><th>Статус</th><th>Последняя связь</th></tr></thead>
-    <tbody>{% for device in devices %}
+    <thead>
+      <tr>
+        <th>Устройство</th>
+        <th>Hostname</th>
+        <th>Модель</th>
+        <th>Прошивка</th>
+        <th>Статус</th>
+        <th>Последняя связь</th>
+        <th>Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for device in devices %}
       <tr>
         <td><a href="/devices/{{ device.id }}">{{ device.name or device.hostname or 'Роутер' }}</a></td>
-        <td>{{ device.hostname or '—' }}</td><td>{{ device.model or '—' }}</td><td>{{ device.firmware or '—' }}</td>
+        <td>{{ device.hostname or '—' }}</td>
+        <td>{{ device.model or '—' }}</td>
+        <td>{{ device.firmware or '—' }}</td>
         <td><span class="status status--{{ device.status|lower }}">{{ device.status }}</span></td>
         <td>{{ device.last_seen_at|timestamp }}</td>
+        <td>
+          {% if device.status == 'disabled' %}
+          <form method="post" action="/devices/{{ device.id }}/archive" onsubmit="return confirm('Удалить отключённый роутер из списка? История telemetry и команд останется в базе, но для повторного подключения потребуется заново зарегистрировать агент.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="button--danger" type="submit">Удалить из списка</button>
+          </form>
+          {% else %}
+          <span class="muted">—</span>
+          {% endif %}
+        </td>
       </tr>
-    {% else %}<tr><td class="empty-state" colspan="6">Роутеры пока не подключены</td></tr>{% endfor %}</tbody>
+      {% else %}
+      <tr><td class="empty-state" colspan="7">Роутеры пока не подключены</td></tr>
+      {% endfor %}
+    </tbody>
   </table>
 </div>
 {% endblock %}

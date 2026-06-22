@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -152,8 +153,8 @@ fun DeviceDetailScreen(
             actionError = actionError,
             canArchive = device.status == "disabled",
             onCheckUpdate = { queueCommand("agent.update", success = "Команда проверки обновления добавлена") },
-            onEnableAutoUpdate = { queueCommand("agent.set_auto_update", JSONObject().put("enabled", true), "Auto-update будет включен при следующем опросе агента") },
-            onDisableAutoUpdate = { queueCommand("agent.set_auto_update", JSONObject().put("enabled", false), "Auto-update будет выключен при следующем опросе агента") },
+            onEnableAutoUpdate = { queueCommand("agent.set_auto_update", JSONObject().put("enabled", true), "Автообновление будет включено при следующем опросе агента") },
+            onDisableAutoUpdate = { queueCommand("agent.set_auto_update", JSONObject().put("enabled", false), "Автообновление будет выключено при следующем опросе агента") },
             onRollback = { confirmRollback = true },
             onArchive = { confirmArchive = true },
         )
@@ -162,7 +163,7 @@ fun DeviceDetailScreen(
     if (confirmRollback) {
         AlertDialog(
             onDismissRequest = { confirmRollback = false },
-            title = { Text("Rollback агента?") },
+            title = { Text("Вернуть предыдущую версию агента?") },
             text = { Text("Агент попробует восстановить предыдущую рабочую версию и перезапуститься.") },
             confirmButton = {
                 TextButton(onClick = {
@@ -182,7 +183,7 @@ fun DeviceDetailScreen(
         AlertDialog(
             onDismissRequest = { confirmArchive = false },
             title = { Text("Удалить из списка?") },
-            text = { Text("Этот роутер уже отключен. История telemetry и команд останется на сервере, но для повторного подключения агент нужно будет зарегистрировать заново.") },
+            text = { Text("Этот роутер уже отключён. История telemetry и команд останется на сервере, но для повторного подключения агент нужно будет зарегистрировать заново.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmArchive = false
@@ -267,10 +268,11 @@ private fun AgentSection(
 ) {
     val capabilities = agent?.capabilities ?: emptyMap()
     val autoUpdateEnabled = agent?.autoUpdateEnabled == true
-    TelemetrySection("Agent") {
+    var showCapabilities by rememberSaveable { mutableStateOf(false) }
+    TelemetrySection("Агент") {
         InfoRow("Версия", agent?.version, stringResource(R.string.no_data))
         InfoRow("Статус", agent?.status, stringResource(R.string.no_data))
-        InfoRow("Auto-update", if (agent == null) null else if (autoUpdateEnabled) "Включено" else "Выключено", stringResource(R.string.no_data))
+        InfoRow("Автообновление", if (agent == null) null else if (autoUpdateEnabled) "Включено" else "Выключено", stringResource(R.string.no_data))
         InfoRow("Доступная версия", agent?.availableVersion, stringResource(R.string.no_data))
         InfoRow("Последняя проверка", formatTimestamp(agent?.lastUpdateCheck), stringResource(R.string.no_data))
         InfoRow("Статус обновления", agent?.lastUpdateStatus, stringResource(R.string.no_data))
@@ -278,7 +280,17 @@ private fun AgentSection(
         InfoRow("Последняя ошибка", agent?.lastUpdateError, stringResource(R.string.no_data))
         InfoRow("Rollback", if (agent == null) null else if (agent.rollbackAvailable) "Доступен" else "Нет", stringResource(R.string.no_data))
         InfoRow("Источник", agent?.updateSource, stringResource(R.string.no_data))
-        InfoRow("Capabilities", capabilities.keys.sorted().takeIf { it.isNotEmpty() }?.joinToString(", "), stringResource(R.string.no_data))
+        InfoRow("Capabilities", capabilitiesSummary(capabilities), stringResource(R.string.no_data))
+        if (capabilities.isNotEmpty()) {
+            TextButton(onClick = { showCapabilities = !showCapabilities }, modifier = Modifier.fillMaxWidth()) {
+                Text(if (showCapabilities) "Скрыть capabilities" else "Показать capabilities")
+            }
+            if (showCapabilities) {
+                groupedCapabilities(capabilities).forEach { (title, values) ->
+                    InfoRow(title, values.joinToString(", "))
+                }
+            }
+        }
 
         if (actionMessage.isNotBlank()) Text(actionMessage, color = MaterialTheme.colorScheme.primary)
         if (actionError.isNotBlank()) Text(actionError, color = MaterialTheme.colorScheme.error)
@@ -290,13 +302,16 @@ private fun AgentSection(
             Button(
                 onClick = if (autoUpdateEnabled) onDisableAutoUpdate else onEnableAutoUpdate,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (autoUpdateEnabled) "Выключить auto-update" else "Включить auto-update") }
+            ) { Text(if (autoUpdateEnabled) "Выключить автообновление" else "Включить автообновление") }
         }
         if (capabilities["agent.rollback"] == true) {
             Button(onClick = onRollback, modifier = Modifier.fillMaxWidth()) { Text("Rollback agent") }
         }
         if (capabilities.isEmpty()) {
-            Text("Старый агент: доступны только данные без управляющих действий.", color = MaterialTheme.colorScheme.secondary)
+            Text(
+                "Агент ещё не передал capabilities. Для управления установите агент rc9 заново.",
+                color = MaterialTheme.colorScheme.secondary,
+            )
         }
         if (canArchive) {
             TextButton(onClick = onArchive, modifier = Modifier.fillMaxWidth()) {

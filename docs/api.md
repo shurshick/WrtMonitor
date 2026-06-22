@@ -41,7 +41,7 @@
 
 ```json
 {
-  "version": "0.1.1-rc8",
+  "version": "0.1.1-rc9",
   "status": "running",
   "auto_update_enabled": true,
   "last_update_status": "success",

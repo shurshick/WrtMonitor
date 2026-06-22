@@ -38,9 +38,13 @@ Invoke-Step "$venvPython -m ruff check backend --select E9,F63,F7,F82"
 Invoke-Step "$venvPython -m ruff format --check backend"
 Invoke-Step "$venvPython -m pytest backend/tests openwrt-agent/tests -q"
 Invoke-Step "& 'C:\Program Files\Git\usr\bin\sh.exe' -n openwrt-agent/wrtmonitor-agent"
+Invoke-Step "Get-ChildItem openwrt-agent/lib/*.sh | ForEach-Object { & 'C:\Program Files\Git\usr\bin\sh.exe' -n `$_`.FullName; if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE } }"
+Invoke-Step "& 'C:\Program Files\Git\usr\bin\sh.exe' -n openwrt-agent/install-openwrt.sh"
 
 if (Get-Command shellcheck -ErrorAction SilentlyContinue) {
     Invoke-Step "shellcheck openwrt-agent/wrtmonitor-agent"
+    Invoke-Step "Get-ChildItem openwrt-agent/lib/*.sh | ForEach-Object { shellcheck `$_`.FullName; if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE } }"
+    Invoke-Step "shellcheck openwrt-agent/install-openwrt.sh"
 }
 else {
     Write-Host "shellcheck not found locally, skipping"

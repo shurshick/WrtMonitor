@@ -5,11 +5,8 @@ from pathlib import Path
 
 
 DOWNLOADS_DIR = Path("openwrt-agent")
-DOWNLOAD_FILES = (
-    "wrtmonitor-agent",
-    "wrtmonitor.init",
-    "install-openwrt.sh",
-)
+MANIFEST_FILE = "openwrt-agent-files.txt"
+CHECKSUMS_FILE = "SHA256SUMS.txt"
 
 
 def _sha256_for(path: Path) -> str:
@@ -28,6 +25,15 @@ def read_agent_version() -> str:
     raise RuntimeError("AGENT_VERSION not found in openwrt-agent/wrtmonitor-agent")
 
 
+def manifest_entries() -> list[str]:
+    manifest = (DOWNLOADS_DIR / MANIFEST_FILE).read_text(encoding="utf-8")
+    return [
+        line.strip()
+        for line in manifest.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+
 def ensure_openwrt_download_metadata() -> None:
     DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
     version = read_agent_version()
@@ -36,10 +42,12 @@ def ensure_openwrt_download_metadata() -> None:
     ) as handle:
         handle.write(f"{version}\n")
     checksums = []
-    for filename in (*DOWNLOAD_FILES, "agent-version.txt"):
+    for filename in manifest_entries():
+        if filename == CHECKSUMS_FILE:
+            continue
         path = DOWNLOADS_DIR / filename
         checksums.append(f"{_sha256_for(path)}  {filename}")
-    with (DOWNLOADS_DIR / "SHA256SUMS.txt").open(
+    with (DOWNLOADS_DIR / CHECKSUMS_FILE).open(
         "w", encoding="utf-8", newline="\n"
     ) as handle:
         handle.write("\n".join(checksums) + "\n")

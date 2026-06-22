@@ -146,7 +146,10 @@ fun WifiControlScreen(serverUrl: String, accessToken: String, device: DeviceDto,
             }
 
             if (capabilities.isEmpty()) {
-                Text("Старый агент: доступны только данные без управляющих действий.", color = MaterialTheme.colorScheme.secondary)
+                Text(
+                    "Агент ещё не передал capabilities. Для управления установите агент rc9 заново.",
+                    color = MaterialTheme.colorScheme.secondary,
+                )
             }
             if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
             TextButton(onClick = refresh, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.refresh)) }

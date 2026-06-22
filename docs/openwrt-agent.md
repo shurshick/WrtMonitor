@@ -1,6 +1,22 @@
 # OpenWrt agent
 
-`wrtmonitor-agent` регистрирует роутер, отправляет telemetry, получает команды с сервера и умеет безопасно обновлять сам себя с собственного сервера WrtMonitor.
+`wrtmonitor-agent` регистрирует роутер, отправляет telemetry, получает команды с сервера и умеет обновлять сам себя.
+
+Начиная с `rc9`, агент использует модульную структуру:
+
+```text
+wrtmonitor-agent
+lib/common.sh
+lib/status.sh
+lib/update.sh
+lib/telemetry.sh
+lib/capabilities.sh
+lib/diagnostics.sh
+lib/commands.sh
+lib/api.sh
+```
+
+Важно: `rc9` меняет layout файлов агента. Для внутреннего тестирования рекомендуется clean reinstall. Обратная совместимость автообновления с `rc7/rc8` намеренно не гарантируется.
 
 ## Требования
 
@@ -9,7 +25,7 @@
 - созданный администратор сервера;
 - для HTTPS нужен `ca-bundle`.
 
-Установщик сам подтягивает зависимости через `opkg`, если их не хватает:
+Installer сам подтягивает зависимости через `opkg update && opkg install`, если их не хватает:
 
 - `curl`
 - `jsonfilter`
@@ -18,18 +34,15 @@
 - `ca-bundle`
 - `coreutils-sha256sum`
 
-## Установка с собственного сервера
+## Установка с уже развернутого сервера
 
-Рекомендуемый способ:
+Рекомендуемый вариант:
 
 ```sh
 cd /tmp
-BASE_URL='https://monitor.example.ru/downloads/openwrt'
-
-wget -O wrtmonitor-agent "$BASE_URL/wrtmonitor-agent"
-wget -O wrtmonitor.init "$BASE_URL/wrtmonitor.init"
-wget -O install-openwrt.sh "$BASE_URL/install-openwrt.sh"
-chmod 0755 wrtmonitor-agent wrtmonitor.init install-openwrt.sh
+wget -O install-openwrt.sh \
+  https://monitor.example.ru/downloads/openwrt/install-openwrt.sh
+chmod 0755 install-openwrt.sh
 
 sh install-openwrt.sh \
   --server 'https://monitor.example.ru' \
@@ -38,14 +51,24 @@ sh install-openwrt.sh \
   --name 'HomeRouter'
 ```
 
+Installer сам скачает:
+
+- `openwrt-agent-files.txt`
+- `SHA256SUMS.txt`
+- `wrtmonitor-agent`
+- `wrtmonitor.init`
+- `install-openwrt.sh`
+- `agent-version.txt`
+- `lib/*.sh`
+
 ## Установка из GitHub Release
 
-Если сервер еще не обновлен до нужной версии:
+Если сервер ещё не обновлён до нужной версии:
 
 ```sh
 cd /tmp
 wget -O wrtmonitor-agent.tar.gz \
-  https://github.com/shurshick/wrtmonitor/releases/download/v0.1.1-rc8-router-management-core/wrtmonitor-openwrt-agent-v0.1.1-rc8.tar.gz
+  https://github.com/shurshick/wrtmonitor/releases/download/v0.1.1-rc9-agent-modularization-and-ui-fixes/wrtmonitor-openwrt-agent-v0.1.1-rc9.tar.gz
 tar -xzf wrtmonitor-agent.tar.gz
 sh install-openwrt.sh \
   --server 'https://monitor.example.ru' \
@@ -53,6 +76,31 @@ sh install-openwrt.sh \
   --admin-password 'your-admin-password' \
   --name 'HomeRouter'
 ```
+
+## Clean reinstall
+
+Для перехода на `rc9` рекомендуется:
+
+```sh
+cd /tmp
+wget -O install-openwrt.sh \
+  https://monitor.example.ru/downloads/openwrt/install-openwrt.sh
+chmod 0755 install-openwrt.sh
+
+sh install-openwrt.sh --clean \
+  --server 'https://monitor.example.ru' \
+  --admin-user 'admin@example.com' \
+  --admin-password 'your-admin-password' \
+  --name 'HomeRouter'
+```
+
+`--clean` удаляет старые:
+
+- `/usr/bin/wrtmonitor-agent`
+- `/usr/lib/wrtmonitor`
+- `/etc/init.d/wrtmonitor`
+
+При этом `/etc/config/wrtmonitor` сохраняется, если отдельно не передан `--remove-config`.
 
 ## Проверка после установки
 
@@ -67,22 +115,51 @@ wrtmonitor-agent send-now
 logread | grep wrtmonitor | tail -50
 ```
 
-## Capabilities
+## Обновление агента
 
-Agent отдает список своих возможностей:
+Ручная проверка и обновление:
+
+```sh
+wrtmonitor-agent version
+wrtmonitor-agent update
+wrtmonitor-agent update --force
+wrtmonitor-agent update --allow-downgrade
+wrtmonitor-agent update-status
+wrtmonitor-agent update-status --json
+```
+
+Во время обновления агент:
+
+1. скачивает `openwrt-agent-files.txt`;
+2. скачивает все файлы из manifest;
+3. проверяет `SHA256SUMS.txt`;
+4. выполняет `sh -n` для `wrtmonitor-agent`, `wrtmonitor.init`, `install-openwrt.sh`, `lib/*.sh`;
+5. сохраняет backup;
+6. заменяет файлы;
+7. при ошибке выполняет rollback.
+
+## Rollback
+
+```sh
+wrtmonitor-agent rollback
+```
+
+Backup хранится в:
+
+```text
+/etc/wrtmonitor/backup/
+```
+
+## Capabilities
 
 ```sh
 wrtmonitor-agent capabilities
 wrtmonitor-agent capabilities --json
 ```
 
-Этот блок попадает в latest telemetry как `agent.capabilities`. Сервер, Web UI и Android используют его для скрытия неподдерживаемых действий.
-
-Если capabilities не удалось собрать, telemetry не должна падать: сервер переходит в read-only fallback.
+Этот блок попадает в latest telemetry как `agent.capabilities`. Сервер, Web UI и Android используют его для показа только поддерживаемых действий.
 
 ## Diagnostics
-
-Поддерживаются команды:
 
 ```sh
 wrtmonitor-agent check-server
@@ -94,15 +171,7 @@ wrtmonitor-agent diagnostics
 wrtmonitor-agent diagnostics --json
 ```
 
-Проверки покрывают:
-
-- доступность `/health`;
-- DNS-резолвинг сервера;
-- default route;
-- наличие wireless-конфига и Wi-Fi telemetry;
-- обязательные зависимости.
-
-## Wi-Fi изменения и backup
+## Wi-Fi и backup
 
 Перед командами:
 
@@ -110,7 +179,7 @@ wrtmonitor-agent diagnostics --json
 - `wifi.set_ssid`
 - `wifi.set_password`
 
-agent создает backup:
+агент создаёт backup:
 
 ```text
 /etc/wrtmonitor/config-backups/wireless-YYYYMMDD-HHMMSS-<command_id>.bak
@@ -128,48 +197,6 @@ agent создает backup:
 wrtmonitor-agent list-config-backups
 ```
 
-Если backup не создался, Wi-Fi-команда завершается с `failed` до изменения конфигурации.
-
-## Auto-update
-
-Agent проверяет сервер по адресу:
-
-```text
-https://monitor.example.ru/downloads/openwrt/
-```
-
-Во время обновления agent:
-
-1. скачивает `wrtmonitor-agent`, `wrtmonitor.init`, `install-openwrt.sh`, `agent-version.txt`, `SHA256SUMS.txt`;
-2. проверяет `SHA-256`;
-3. делает `sh -n` для shell-скриптов;
-4. сохраняет backup предыдущей версии;
-5. заменяет файлы;
-6. при ошибке выполняет rollback.
-
-## Ручное обновление
-
-```sh
-wrtmonitor-agent version
-wrtmonitor-agent update
-wrtmonitor-agent update --force
-wrtmonitor-agent update --allow-downgrade
-wrtmonitor-agent update-status
-wrtmonitor-agent update-status --json
-```
-
-## Rollback
-
-```sh
-wrtmonitor-agent rollback
-```
-
-Backup хранится в:
-
-```text
-/etc/wrtmonitor/backup/
-```
-
 ## Отключение автообновления
 
 ```sh
@@ -178,16 +205,20 @@ uci set wrtmonitor.main.auto_update='0'
 uci commit wrtmonitor
 ```
 
-Дополнительные параметры:
+## Удаление агента
+
+Оставить конфиг:
 
 ```sh
-uci set wrtmonitor.main.update_interval_hours='6'
-uci set wrtmonitor.main.update_channel='stable'
-uci set wrtmonitor.main.allow_downgrade='0'
-uci commit wrtmonitor
+/etc/init.d/wrtmonitor stop 2>/dev/null || true
+/etc/init.d/wrtmonitor disable 2>/dev/null || true
+rm -f /usr/bin/wrtmonitor-agent
+rm -f /etc/init.d/wrtmonitor
+rm -rf /usr/lib/wrtmonitor
+rm -rf /etc/wrtmonitor
 ```
 
-## Удаление агента
+Удалить агент вместе с конфигом:
 
 ```sh
 /etc/init.d/wrtmonitor stop 2>/dev/null || true
@@ -195,12 +226,11 @@ uci commit wrtmonitor
 rm -f /usr/bin/wrtmonitor-agent
 rm -f /etc/init.d/wrtmonitor
 rm -f /etc/config/wrtmonitor
+rm -rf /usr/lib/wrtmonitor
 rm -rf /etc/wrtmonitor
 ```
 
 ## Troubleshooting
-
-Проверка логов:
 
 ```sh
 logread | grep wrtmonitor | tail -50
@@ -208,13 +238,8 @@ logread | grep wrtmonitor | tail -50
 
 Типовые ситуации:
 
-- `checksum mismatch`
-  Обычно сервер раздает не те файлы или `SHA256SUMS.txt` устарел.
-- `download failed`
-  Нет доступа к серверу, DNS или HTTPS.
-- `server unreachable`
-  Проверьте `server_url`, DNS, шлюз и сертификаты.
-- `rollback completed`
-  Обновление сорвалось, agent вернул предыдущую рабочую версию.
-- `backup failed`
-  Перед Wi-Fi-командой не удалось создать backup `wireless`.
+- `checksum mismatch` — сервер раздаёт не те файлы или `SHA256SUMS.txt` устарел;
+- `download failed` — нет доступа к серверу, DNS или HTTPS;
+- `server unreachable` — проверьте `server_url`, DNS, шлюз и сертификаты;
+- `rollback completed` — обновление сорвалось, агент вернул предыдущую рабочую версию;
+- `backup failed` — перед Wi-Fi-командой не удалось создать backup `wireless`.

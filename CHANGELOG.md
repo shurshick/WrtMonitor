@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.1-rc9-agent-modularization-and-ui-fixes
+
+- OpenWrt-агент переведён на модульную структуру `wrtmonitor-agent + lib/*.sh`.
+- Installer и update pipeline обновлены под manifest `openwrt-agent-files.txt` и новую схему установки `/usr/lib/wrtmonitor`.
+- Web UI получил compact capabilities UX и явное сообщение о необходимости reinstall `rc9`, если агент ещё не передал capabilities.
+- Android получил такой же compact capabilities UX на экране устройства.
+- Удаление из активного списка закреплено только для `disabled` устройств в Web UI и Android.
+
 ## v0.1.1-rc8-router-management-core
 
 - Добавлены `agent capabilities`, нормализованные `agent/wifi/network` блоки telemetry и endpoint `GET /api/v1/devices/{device_id}/agent`.

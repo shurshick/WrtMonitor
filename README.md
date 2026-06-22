@@ -1,41 +1,42 @@
 # WrtMonitor
 
-`WrtMonitor` - self-hosted сервер, Web UI, Android-приложение и OpenWrt agent для мониторинга и безопасного управления роутерами OpenWrt.
+`WrtMonitor` - self-hosted сервер, Web UI, Android-приложение и OpenWrt-агент для мониторинга и базового управления роутерами OpenWrt.
+
+## Текущая версия
+
+Текущий internal prerelease: `v0.1.1-rc9-agent-modularization-and-ui-fixes`.
+
+Что вошло в `rc9`:
+
+- OpenWrt-агент разбит на модульную структуру `wrtmonitor-agent + lib/*.sh`;
+- installer и update pipeline переведены на manifest `openwrt-agent-files.txt`;
+- сервер раздаёт полный набор agent-файлов для установки и обновления;
+- Web UI и Android показывают compact summary для capabilities вместо длинного списка;
+- в Web UI и Android закреплено удаление из активного списка только для `disabled` роутеров;
+- переходная логика для старых prerelease-агентов упрощена.
+
+Важно: `rc9` меняет layout файлов OpenWrt-агента. Для внутреннего тестирования рекомендуется clean reinstall агента. Обратная совместимость автообновления с `rc7/rc8` намеренно не гарантируется.
 
 ## Что уже есть
 
 - сервер `FastAPI + PostgreSQL + Alembic`;
-- Web UI в темной dashboard-теме;
+- Web UI в тёмной dashboard-теме;
 - Android-клиент;
-- OpenWrt agent для регистрации, telemetry, очереди команд и автообновления;
-- установка через Docker, Docker Compose и TrueNAS Custom App;
+- OpenWrt-агент для регистрации, telemetry, очереди команд, diagnostics и автообновления;
+- установка через Docker Compose, VPS, домашний Linux-сервер, NAS с Docker и TrueNAS Custom App;
 - управление Wi-Fi, базовой сетью, диагностикой и жизненным циклом агента;
-- релизные артефакты для сервера, agent и Android.
+- release artifacts для сервера, агента и Android.
 
-## Текущий релиз
+## Быстрый старт
 
-Текущая release candidate версия: `v0.1.1-rc8`.
-
-Что добавлено в `rc8`:
-
-- `agent capabilities` с safe fallback для старых агентов;
-- централизованный `COMMAND_REGISTRY` и risk levels;
-- безопасная backend-валидация payload для управляющих команд;
-- diagnostics CLI и `diagnostics.run`;
-- backup `/etc/config/wireless` перед изменением Wi-Fi;
-- нормализованные блоки `agent`, `wifi`, `network` в latest telemetry;
-- capability-aware Web UI и Android.
-
-## Быстрый старт сервера
-
-1. Поднимите сервер и PostgreSQL через Docker Compose или TrueNAS.
+1. Разверните сервер и PostgreSQL через Docker Compose или TrueNAS.
 2. Откройте `/setup`.
 3. Создайте первого администратора.
-4. Проверьте `/health` и `/health/config`.
+4. Проверьте `/health`.
 5. Подключите Android-приложение.
-6. Установите OpenWrt agent.
+6. Установите OpenWrt-агент.
 
-Если сервер публикуется через Nginx Proxy Manager или другой reverse proxy, указывайте внешний HTTPS-адрес:
+Для reverse proxy указывайте внешний HTTPS-адрес:
 
 ```env
 WRTMONITOR_PUBLIC_SERVER_URL=https://monitor.example.ru
@@ -51,12 +52,12 @@ WRTMONITOR_ALLOW_INSECURE_LOCAL=true
 
 ## TrueNAS
 
-Базовый YAML лежит в [`deploy/truenas/wrtmonitor-truenas.yaml`](deploy/truenas/wrtmonitor-truenas.yaml).
+Базовый YAML лежит в `deploy/truenas/wrtmonitor-truenas.yaml`.
 
 В релизе он публикуется как:
 
 ```text
-wrtmonitor-truenas-v0.1.1-rc8.yaml
+wrtmonitor-truenas-v0.1.1-rc9.yaml
 ```
 
 Контейнер использует:
@@ -67,41 +68,33 @@ ghcr.io/shurshick/wrtmonitor:latest
 
 `latest` скачивается при redeploy через **Edit -> Save**, но не обновляет уже запущенный контейнер сам по себе.
 
-## OpenWrt agent
+## OpenWrt-агент
 
-OpenWrt agent можно установить с GitHub Release или прямо с уже развернутого сервера:
+OpenWrt-агент можно установить:
 
-```text
-https://monitor.example.ru/downloads/openwrt/
-```
+- с GitHub Release;
+- прямо с уже развернутого сервера `https://monitor.example.ru/downloads/openwrt/`.
 
-Начиная с `rc8`, сервер раздает:
+Сервер раздаёт:
 
 - `wrtmonitor-agent`
 - `wrtmonitor.init`
 - `install-openwrt.sh`
 - `agent-version.txt`
+- `openwrt-agent-files.txt`
 - `SHA256SUMS.txt`
+- `lib/*.sh`
 
-Agent умеет:
-
-- `capabilities --json`
-- `diagnostics --json`
-- `update-status`
-- `rollback`
-- `list-config-backups`
-- `support-bundle`
-
-Подробно:
+Подробности:
 
 - [OpenWrt agent](docs/openwrt-agent.md)
-- [Развертывание сервера](docs/server-deployment.md)
-- [Архитектура](docs/architecture.md)
+- [Развёртывание сервера](docs/server-deployment.md)
 - [Router management core](docs/router-management-core.md)
 
 ## Документация
 
 - [OpenWrt agent](docs/openwrt-agent.md)
+- [Развёртывание сервера](docs/server-deployment.md)
 - [API](docs/api.md)
 - [Архитектура](docs/architecture.md)
 - [Жизненный цикл команд](docs/command-lifecycle.md)

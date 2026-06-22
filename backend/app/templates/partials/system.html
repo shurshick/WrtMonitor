@@ -1,5 +1,8 @@
 <section class="card">
   <h2>Система</h2>
+  {% if capabilities_message and not supports.system_reboot %}
+  <p class="notice">{{ capabilities_message }}</p>
+  {% endif %}
   <p>Команда перезагрузки будет выполнена при следующем опросе агента.</p>
   {% if supports.system_reboot %}
   <form class="control-form" method="post" action="/devices/{{ device.id }}/web-command">

@@ -2,8 +2,8 @@
   <h2>Wi-Fi</h2>
   {% if capabilities %}
   <p class="notice">Перед изменением SSID, пароля или состояния агент создаст backup <code>/etc/config/wireless</code>.</p>
-  {% elif legacy_agent %}
-  <p class="notice">Устройство подключено через старый агент. Управление Wi-Fi работает в режиме совместимости.</p>
+  {% elif capabilities_message %}
+  <p class="notice">{{ capabilities_message }}</p>
   {% endif %}
   <ul class="panel-list">
     {% for radio in radios %}

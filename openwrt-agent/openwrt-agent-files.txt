@@ -1,0 +1,14 @@
+wrtmonitor-agent
+wrtmonitor.init
+install-openwrt.sh
+agent-version.txt
+openwrt-agent-files.txt
+SHA256SUMS.txt
+lib/common.sh
+lib/status.sh
+lib/update.sh
+lib/telemetry.sh
+lib/capabilities.sh
+lib/diagnostics.sh
+lib/commands.sh
+lib/api.sh

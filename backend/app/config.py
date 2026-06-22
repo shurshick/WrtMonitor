@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from urllib.parse import unquote, urlparse
 
 
-APP_NAME = "wrtmonitor"
-APP_VERSION = "0.1.1-rc8"
+APP_NAME = "WrtMonitor"
+APP_VERSION = "0.1.1-rc9"
 
 
 @dataclass(frozen=True)

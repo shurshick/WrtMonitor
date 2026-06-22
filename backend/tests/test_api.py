@@ -186,6 +186,60 @@ def test_devices_page_lists_devices(monkeypatch):
     assert "online" in response.text
 
 
+def test_devices_page_shows_archive_button_only_for_disabled_devices(monkeypatch):
+    class FakeScalars:
+        def all(self):
+            return [
+                Device(
+                    id="a0f55bcd-3a85-4d94-8a50-f62e463682b8",
+                    name="DisabledRouter",
+                    hostname="OpenWrt",
+                    model="VirtualBox",
+                    firmware="OpenWrt",
+                    token_hash="token",
+                    status="disabled",
+                    last_seen_at=None,
+                    created_at=None,
+                    updated_at=None,
+                ),
+                Device(
+                    id="b0f55bcd-3a85-4d94-8a50-f62e463682b8",
+                    name="OnlineRouter",
+                    hostname="OpenWrt",
+                    model="VirtualBox",
+                    firmware="OpenWrt",
+                    token_hash="token",
+                    status="online",
+                    last_seen_at=None,
+                    created_at=None,
+                    updated_at=None,
+                ),
+            ]
+
+    class FakeSession:
+        def scalars(self, statement):
+            return FakeScalars()
+
+    def fake_db():
+        yield FakeSession()
+
+    monkeypatch.setattr(main, "is_setup_required", lambda db, config: False)
+    monkeypatch.setattr(
+        main, "web_user_from_session", lambda session_token, config, db: object()
+    )
+    app.dependency_overrides[get_db] = fake_db
+    client = TestClient(app)
+    try:
+        response = client.get("/devices", cookies={"wrtmonitor_session": "token"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.text.count("Удалить из списка") == 1
+    assert '/devices/a0f55bcd-3a85-4d94-8a50-f62e463682b8/archive' in response.text
+    assert '/devices/b0f55bcd-3a85-4d94-8a50-f62e463682b8/archive' not in response.text
+
+
 def test_device_page_renders_agent_update_status(monkeypatch):
     device = Device(
         id="a0f55bcd-3a85-4d94-8a50-f62e463682b8",
@@ -255,6 +309,83 @@ def test_device_page_renders_agent_update_status(monkeypatch):
     assert "Агент" in response.text
     assert "0.1.1-rc8" in response.text
     assert "success" in response.text
+
+
+def test_device_page_collapses_capabilities_by_default(monkeypatch):
+    device = Device(
+        id="a0f55bcd-3a85-4d94-8a50-f62e463682b8",
+        name="HomeRouter",
+        hostname="OpenWrt",
+        model="VirtualBox",
+        firmware="OpenWrt",
+        token_hash="token",
+        status="online",
+        last_seen_at=None,
+        created_at=None,
+        updated_at=None,
+    )
+    telemetry = DeviceTelemetry(
+        device_id=device.id,
+        payload={
+            "agent": {
+                "version": "0.1.1-rc9",
+                "capabilities": {
+                    "agent.update": True,
+                    "wifi.set_ssid": True,
+                    "system.reboot": False,
+                },
+            }
+        },
+        created_at=datetime.now(UTC),
+    )
+
+    class FakeScalars:
+        def __init__(self, items):
+            self._items = items
+
+        def first(self):
+            return self._items[0] if self._items else None
+
+        def all(self):
+            return self._items
+
+    class FakeSession:
+        def scalars(self, statement):
+            rendered = str(statement)
+            if "device_telemetry" in rendered:
+                return FakeScalars([telemetry])
+            return FakeScalars([])
+
+    def fake_db():
+        yield FakeSession()
+
+    monkeypatch.setattr(main, "is_setup_required", lambda db, config: False)
+    monkeypatch.setattr(
+        main, "web_user_from_session", lambda session_token, config, db: object()
+    )
+    monkeypatch.setattr(
+        main, "get_user_device_or_404", lambda db, user, device_id: device
+    )
+    monkeypatch.setattr(
+        main,
+        "device_supports",
+        lambda db, device_id, capability: telemetry.payload["agent"]["capabilities"].get(
+            capability, False
+        ),
+    )
+    app.dependency_overrides[get_db] = fake_db
+    client = TestClient(app)
+    try:
+        response = client.get(
+            f"/devices/{device.id}", cookies={"wrtmonitor_session": "token"}
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert "2 enabled / 1 disabled" in response.text
+    assert "Показать capabilities" in response.text
+    assert '<details class="section">' in response.text
 
 
 def test_devices_page_requires_web_session(monkeypatch):
