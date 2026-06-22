@@ -26,6 +26,7 @@ function Invoke-Step {
 }
 
 $env:PYTHONPATH = $repoRoot
+$env:PATH = "C:\Program Files\Git\usr\bin;$env:PATH"
 $env:WRTMONITOR_DATABASE_URL = "postgresql+psycopg://wrtmonitor:local-dev-password@localhost:5432/wrtmonitor_test"
 $env:WRTMONITOR_ALLOW_INSECURE_LOCAL = "true"
 $env:WRTMONITOR_ALLOW_INSECURE_DEV_DEFAULTS = "true"
