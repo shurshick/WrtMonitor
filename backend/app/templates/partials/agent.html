@@ -63,20 +63,23 @@
     </form>
     {% endif %}
     {% if supports.diagnostics %}
-    <form class="control-form" method="post" action="/devices/{{ device.id }}/web-command">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="command_type" value="diagnostics.run">
-      <input type="hidden" name="confirmed" value="true">
-      <label><input type="checkbox" name="diagnostics_checks" value="server" checked> server</label>
-      <label><input type="checkbox" name="diagnostics_checks" value="dns" checked> dns</label>
-      <label><input type="checkbox" name="diagnostics_checks" value="route" checked> route</label>
-      <label><input type="checkbox" name="diagnostics_checks" value="wifi" checked> wifi</label>
-      <label><input type="checkbox" name="diagnostics_checks" value="dependencies" checked> dependencies</label>
-      <div class="button-row">
-        <button type="submit">Диагностика</button>
-        <span class="risk-badge risk-badge--readonly">read only</span>
-      </div>
-    </form>
+    <div class="control-subsection">
+      <p class="control-subsection__title">Диагностика</p>
+      <form class="control-form control-form--diagnostics" method="post" action="/devices/{{ device.id }}/web-command">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="command_type" value="diagnostics.run">
+        <input type="hidden" name="confirmed" value="true">
+        <label><input type="checkbox" name="diagnostics_checks" value="server" checked> server</label>
+        <label><input type="checkbox" name="diagnostics_checks" value="dns" checked> dns</label>
+        <label><input type="checkbox" name="diagnostics_checks" value="route" checked> route</label>
+        <label><input type="checkbox" name="diagnostics_checks" value="wifi" checked> wifi</label>
+        <label><input type="checkbox" name="diagnostics_checks" value="dependencies" checked> dependencies</label>
+        <div class="button-row">
+          <button type="submit">Диагностика</button>
+          <span class="risk-badge risk-badge--readonly">read only</span>
+        </div>
+      </form>
+    </div>
     {% endif %}
   </div>
 </section>
